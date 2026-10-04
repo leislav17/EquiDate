@@ -42,12 +42,9 @@ const AppContent: React.FC = () => {
 
       {/* Discreet Minimal Footer */}
       <footer className="mt-auto py-6 border-t border-neutral-200/80 text-center text-xs text-neutral-400">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="max-w-5xl mx-auto px-4 flex items-center justify-center">
           <p className="font-semibold text-neutral-600">
-            Salto Ecuestre · Plataforma de Concursos de Salto
-          </p>
-          <p className="text-[11px] text-neutral-400">
-            Temporada 2026 · Información oficial integrada
+            EquiDate · Calendario de eventos hípicos
           </p>
         </div>
       </footer>

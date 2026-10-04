@@ -92,13 +92,6 @@ export const CompetitionList: React.FC = () => {
 
   const featuredCurrentEvent = currentEvents.length > 0 ? currentEvents[0] : null;
 
-  // The rest of the events in the list (excluding the one in the hero if in the current filter)
-  const remainingListEvents = useMemo(() => {
-    if (!featuredCurrentEvent) return filteredEvents;
-    // Don't duplicate in the list if already featured at the top hero
-    return filteredEvents.filter((evt) => evt.id !== featuredCurrentEvent.id);
-  }, [filteredEvents, featuredCurrentEvent]);
-
   // Reset filters action
   const handleResetFilters = () => {
     setActiveYear(2026);
@@ -369,7 +362,7 @@ export const CompetitionList: React.FC = () => {
         {/* ======================================================== */}
         {viewMode === 'list' ? (
           <div className="space-y-3.5">
-            {remainingListEvents.length === 0 && !featuredCurrentEvent ? (
+            {filteredEvents.length === 0 ? (
               <div className="text-center py-16 px-4 bg-white border border-neutral-200/80 rounded-2xl shadow-xs">
                 <Clock className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
                 <p className="text-neutral-700 text-sm font-semibold">
@@ -387,12 +380,8 @@ export const CompetitionList: React.FC = () => {
                   <span>Restablecer fecha actual</span>
                 </button>
               </div>
-            ) : remainingListEvents.length === 0 && featuredCurrentEvent ? (
-              <p className="text-xs text-neutral-500 italic py-4 text-center">
-                El concurso de este período se encuentra destacado arriba como evento en desarrollo.
-              </p>
             ) : (
-              remainingListEvents.map((evt) => {
+              filteredEvents.map((evt) => {
                 const temporalStatus = getEventTemporalStatus(evt.startDate, evt.endDate);
                 const isCurrent = temporalStatus === 'ACTUAL';
                 const formattedDateStr = formatCardDate(evt.startDate, evt.endDate);

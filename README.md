@@ -12,10 +12,12 @@ Plataforma centralizada y mobile-first para consultar concursos de salto ecuestr
 
 ### Paso B: Ejecutar el Esquema SQL
 1. En el panel de Supabase, andá a **SQL Editor**.
-2. Abrí y ejecutá el archivo `supabase/schema.sql` provisto en este repositorio.
-3. Esto creará:
+2. Si es una instalación nueva, ejecutá el archivo completo `supabase/schema.sql`.
+3. Si ya tenías las tablas `events` y `documents` creadas, ejecutá el script de migración `supabase/migrations/20261004_document_pages.sql`.
+4. Esto creará:
    - Tabla `public.events` (concursos)
-   - Tabla `public.documents` (documentos)
+   - Tabla `public.documents` (documentos principales)
+   - Tabla `public.document_pages` (páginas de documentos multipágina con `CASCADE DELETE`)
    - Bucket de almacenamiento `event-documents` (público)
    - Reglas de seguridad **Row Level Security (RLS)** para lectura pública de publicados y edición exclusiva por administradores autenticados.
 

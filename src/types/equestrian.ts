@@ -4,6 +4,16 @@ export type EventTemporalStatus = 'ACTUAL' | 'PROXIMO' | 'FINALIZADO';
 
 export type DocumentType = 'PROGRAM' | 'START_LIST' | 'RESULT';
 
+export interface DocumentPage {
+  id: string;
+  documentId: string;
+  storagePath: string;
+  fileUrl: string;
+  mimeType: string;
+  sortOrder: number;
+  createdAt?: string;
+}
+
 export interface EquestrianEvent {
   id: string;
   name: string;
@@ -27,7 +37,8 @@ export interface DocumentItem {
   storagePath?: string;     // Database column storage_path
   fileUrl: string;          // Resolved public URL or Data URI
   mimeType: 'application/pdf' | 'image/jpeg' | 'image/png' | 'image/webp' | string;
-  pages?: string[];         // URLs or data URIs for multi-page documents
+  pages?: string[];         // URLs or data URIs for multi-page documents (resolved URLs in order)
+  documentPages?: DocumentPage[]; // Structured pages
   order: number;            // Database column sort_order
   createdAt: string;
   updatedAt: string;

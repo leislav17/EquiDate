@@ -1,8 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { EquestrianEvent, DocumentItem, EventStatus } from '../types/equestrian';
+import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus } from '../types/equestrian';
 import { INITIAL_DEMO_EVENTS, buildInitialDocuments } from '../data/demoData';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
+
+export interface DocumentPageInput {
+  file?: File | Blob;
+  dataUrl: string;
+  name: string;
+  mimeType: string;
+}
 
 interface EquestrianContextType {
   events: EquestrianEvent[];
@@ -43,9 +50,15 @@ interface EquestrianContextType {
   // Document actions
   addDocument: (
     docData: Omit<DocumentItem, 'id' | 'createdAt' | 'updatedAt' | 'order'>,
-    file?: File | Blob
+    file?: File | Blob,
+    pages?: DocumentPageInput[]
   ) => Promise<void>;
-  updateDocument: (id: string, updates: Partial<DocumentItem>, newFile?: File | Blob) => Promise<void>;
+  updateDocument: (
+    id: string,
+    updates: Partial<DocumentItem>,
+    newFile?: File | Blob,
+    newPages?: DocumentPageInput[]
+  ) => Promise<void>;
   deleteDocument: (id: string) => Promise<void>;
   reorderDocument: (id: string, direction: 'up' | 'down') => Promise<void>;
 
@@ -189,6 +202,20 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (docsError) throw docsError;
 
+      // 3. Fetch Document Pages (if table exists)
+      let dbPages: any[] = [];
+      try {
+        const { data: pagesData } = await supabase
+          .from('document_pages')
+          .select('*')
+          .order('sort_order', { ascending: true });
+        if (pagesData && Array.isArray(pagesData)) {
+          dbPages = pagesData;
+        }
+      } catch (pagesErr) {
+        console.warn('Could not query document_pages table (run migration if not created):', pagesErr);
+      }
+
       if (dbEvents && dbEvents.length > 0) {
         const mappedEvents: EquestrianEvent[] = dbEvents.map((e) => ({
           id: String(e.id),
@@ -208,7 +235,42 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (dbDocuments && dbDocuments.length > 0) {
         const mappedDocs: DocumentItem[] = dbDocuments.map((d) => {
-          const publicUrl = getStorageFileUrl(d.storage_path);
+          const publicUrl = d.storage_path ? getStorageFileUrl(d.storage_path) : '';
+          const isPdf =
+            (d.mime_type && d.mime_type.toLowerCase() === 'application/pdf') ||
+            (d.storage_path && d.storage_path.toLowerCase().endsWith('.pdf')) ||
+            (publicUrl && publicUrl.toLowerCase().includes('.pdf'));
+
+          const mimeType = d.mime_type || (isPdf ? 'application/pdf' : 'image/jpeg');
+
+          // Check if this document has entries in document_pages
+          const pagesForDoc = dbPages
+            .filter((p) => String(p.document_id) === String(d.id))
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+          let structuredPages: DocumentPage[] | undefined = undefined;
+          let resolvedPageUrls: string[] | undefined = undefined;
+          let finalFileUrl = publicUrl;
+
+          if (pagesForDoc.length > 0) {
+            structuredPages = pagesForDoc.map((p) => {
+              const pageUrl = getStorageFileUrl(p.storage_path);
+              return {
+                id: String(p.id),
+                documentId: String(p.document_id),
+                storagePath: p.storage_path,
+                fileUrl: pageUrl,
+                mimeType: p.mime_type,
+                sortOrder: p.sort_order || 1,
+                createdAt: p.created_at,
+              };
+            });
+            resolvedPageUrls = structuredPages.map((p) => p.fileUrl);
+            finalFileUrl = resolvedPageUrls[0] || publicUrl;
+          } else if (!isPdf && publicUrl) {
+            resolvedPageUrls = [publicUrl];
+          }
+
           return {
             id: String(d.id),
             eventId: String(d.event_id),
@@ -216,9 +278,10 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             type: d.type,
             eventDate: d.event_date || null,
             storagePath: d.storage_path,
-            fileUrl: publicUrl,
-            pages: [publicUrl],
-            mimeType: d.mime_type || 'application/pdf',
+            fileUrl: finalFileUrl,
+            pages: isPdf ? undefined : resolvedPageUrls,
+            documentPages: structuredPages,
+            mimeType,
             order: d.sort_order || 1,
             createdAt: d.created_at,
             updatedAt: d.updated_at,
@@ -433,9 +496,15 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isBackendConnected) {
       try {
         // Delete files from storage
-        const pathsToDelete = eventDocs
-          .map((d) => d.storagePath)
-          .filter((p): p is string => Boolean(p));
+        const pathsToDelete: string[] = [];
+        eventDocs.forEach((d) => {
+          if (d.storagePath) pathsToDelete.push(d.storagePath);
+          if (d.documentPages && d.documentPages.length > 0) {
+            d.documentPages.forEach((p) => {
+              if (p.storagePath) pathsToDelete.push(p.storagePath);
+            });
+          }
+        });
 
         if (pathsToDelete.length > 0) {
           await supabase.storage.from(BUCKET_NAME).remove(pathsToDelete);
@@ -461,7 +530,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // CRUD Document: Add
   const addDocument = async (
     docData: Omit<DocumentItem, 'id' | 'createdAt' | 'updatedAt' | 'order'>,
-    file?: File | Blob
+    file?: File | Blob,
+    pages?: DocumentPageInput[]
   ) => {
     const tempId = `doc-${Date.now()}`;
     const now = new Date().toISOString();
@@ -474,16 +544,155 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     let storagePath = docData.storagePath || '';
     let finalFileUrl = docData.fileUrl;
+    let structuredPages: DocumentPage[] | undefined = undefined;
+    let resolvedPageUrls: string[] | undefined = undefined;
 
+    const isPdf =
+      docData.mimeType?.toLowerCase() === 'application/pdf' ||
+      (file && 'name' in file && typeof file.name === 'string' && file.name.toLowerCase().endsWith('.pdf')) ||
+      (finalFileUrl && finalFileUrl.toLowerCase().includes('.pdf'));
+
+    // Handle Multi-Page Image Document
+    if (pages && pages.length > 0) {
+      if (isBackendConnected) {
+        try {
+          // 1. Insert master document record
+          const { data: dbDoc, error: insertError } = await supabase
+            .from('documents')
+            .insert({
+              event_id: docData.eventId,
+              name: docData.name,
+              type: docData.type,
+              event_date: docData.eventDate,
+              storage_path: null,
+              mime_type: pages[0].mimeType || docData.mimeType || 'image/jpeg',
+              sort_order: sortOrder,
+            })
+            .select('id')
+            .single();
+
+          if (insertError) throw insertError;
+          const actualDocId = dbDoc?.id ? String(dbDoc.id) : tempId;
+
+          // 2. Upload each page and insert into document_pages
+          const uploadedPages: DocumentPage[] = [];
+          for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const pageNum = i + 1;
+            const ext = page.mimeType?.includes('png')
+              ? 'png'
+              : page.mimeType?.includes('webp')
+              ? 'webp'
+              : page.mimeType?.includes('svg')
+              ? 'svg'
+              : 'jpg';
+
+            const pageStoragePath = `events/${docData.eventId}/documents/${actualDocId}/page-${String(pageNum).padStart(3, '0')}.${ext}`;
+
+            let uploadBlob: Blob | null = page.file || null;
+            if (!uploadBlob && page.dataUrl?.startsWith('data:')) {
+              uploadBlob = dataUrlToBlob(page.dataUrl);
+            }
+
+            if (uploadBlob) {
+              const { error: pageUploadErr } = await supabase.storage
+                .from(BUCKET_NAME)
+                .upload(pageStoragePath, uploadBlob, {
+                  contentType: page.mimeType || 'image/jpeg',
+                  upsert: true,
+                });
+              if (pageUploadErr) console.warn('Page upload warning:', pageUploadErr);
+            }
+
+            const { data: dbPage } = await supabase
+              .from('document_pages')
+              .insert({
+                document_id: actualDocId,
+                storage_path: pageStoragePath,
+                mime_type: page.mimeType || 'image/jpeg',
+                sort_order: pageNum,
+              })
+              .select('id')
+              .single();
+
+            const pagePublicUrl = getStorageFileUrl(pageStoragePath);
+            uploadedPages.push({
+              id: dbPage?.id ? String(dbPage.id) : `page-${Date.now()}-${pageNum}`,
+              documentId: actualDocId,
+              storagePath: pageStoragePath,
+              fileUrl: pagePublicUrl,
+              mimeType: page.mimeType || 'image/jpeg',
+              sortOrder: pageNum,
+              createdAt: now,
+            });
+          }
+
+          structuredPages = uploadedPages;
+          resolvedPageUrls = uploadedPages.map((p) => p.fileUrl);
+          finalFileUrl = resolvedPageUrls[0] || '';
+          storagePath = uploadedPages[0]?.storagePath || '';
+
+          // Update main document's storage_path to page 1 for backward compatibility
+          if (storagePath) {
+            await supabase
+              .from('documents')
+              .update({ storage_path: storagePath })
+              .eq('id', actualDocId);
+          }
+
+          const newDoc: DocumentItem = {
+            ...docData,
+            id: actualDocId,
+            order: sortOrder,
+            storagePath,
+            fileUrl: finalFileUrl,
+            pages: resolvedPageUrls,
+            documentPages: structuredPages,
+            mimeType: pages[0].mimeType || 'image/jpeg',
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          setDocuments((prev) => [...prev, newDoc]);
+          return;
+        } catch (err) {
+          console.error('Error adding multi-page document to Supabase:', err);
+        }
+      }
+
+      // Fallback local multi-page
+      const localPages: DocumentPage[] = pages.map((p, idx) => ({
+        id: `page-${Date.now()}-${idx + 1}`,
+        documentId: tempId,
+        storagePath: `local/${tempId}/page-${idx + 1}`,
+        fileUrl: p.dataUrl,
+        mimeType: p.mimeType,
+        sortOrder: idx + 1,
+        createdAt: now,
+      }));
+
+      const newLocalDoc: DocumentItem = {
+        ...docData,
+        id: tempId,
+        order: sortOrder,
+        storagePath: '',
+        fileUrl: localPages[0]?.fileUrl || finalFileUrl,
+        pages: localPages.map((p) => p.fileUrl),
+        documentPages: localPages,
+        mimeType: pages[0].mimeType || 'image/jpeg',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      setDocuments((prev) => [...prev, newLocalDoc]);
+      return;
+    }
+
+    // Single File flow (PDF or single image)
     if (isBackendConnected) {
       try {
-        // Generate organized storage path: events/{eventId}/{timestamp}_{name}
         const cleanName = docData.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-        const extension = docData.mimeType?.includes('pdf')
-          ? 'pdf'
-          : docData.mimeType?.includes('svg')
-          ? 'svg'
-          : 'png';
+        const extension = isPdf ? 'pdf' : docData.mimeType?.includes('svg') ? 'svg' : 'png';
         storagePath = `events/${docData.eventId}/${Date.now()}_${cleanName}.${extension}`;
 
         let uploadBlob: Blob | null = file || null;
@@ -495,7 +704,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const { error: uploadError } = await supabase.storage
             .from(BUCKET_NAME)
             .upload(storagePath, uploadBlob, {
-              contentType: docData.mimeType || 'application/pdf',
+              contentType: docData.mimeType || (isPdf ? 'application/pdf' : 'image/png'),
               upsert: true,
             });
 
@@ -503,7 +712,6 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           finalFileUrl = getStorageFileUrl(storagePath);
         }
 
-        // Insert record in documents table
         const { data: dbDoc, error: insertError } = await supabase
           .from('documents')
           .insert({
@@ -512,7 +720,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             type: docData.type,
             event_date: docData.eventDate,
             storage_path: storagePath,
-            mime_type: docData.mimeType,
+            mime_type: docData.mimeType || (isPdf ? 'application/pdf' : 'image/png'),
             sort_order: sortOrder,
           })
           .select('id')
@@ -526,7 +734,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           order: sortOrder,
           storagePath,
           fileUrl: finalFileUrl,
-          pages: [finalFileUrl],
+          pages: isPdf ? undefined : [finalFileUrl],
           createdAt: now,
           updatedAt: now,
         };
@@ -534,7 +742,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setDocuments((prev) => [...prev, newDoc]);
         return;
       } catch (err) {
-        console.error('Error adding document to Supabase:', err);
+        console.error('Error adding single document to Supabase:', err);
       }
     }
 
@@ -545,7 +753,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       order: sortOrder,
       storagePath,
       fileUrl: finalFileUrl,
-      pages: [finalFileUrl],
+      pages: isPdf ? undefined : [finalFileUrl],
       createdAt: now,
       updatedAt: now,
     };
@@ -553,28 +761,112 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   // CRUD Document: Update
-  const updateDocument = async (id: string, updates: Partial<DocumentItem>, newFile?: File | Blob) => {
+  const updateDocument = async (
+    id: string,
+    updates: Partial<DocumentItem>,
+    newFile?: File | Blob,
+    newPages?: DocumentPageInput[]
+  ) => {
     const now = new Date().toISOString();
     let updatedStoragePath = updates.storagePath;
     let updatedFileUrl = updates.fileUrl;
+    let updatedPages = updates.pages;
+    let updatedDocPages = updates.documentPages;
 
-    if (isBackendConnected && newFile) {
-      try {
-        const target = documents.find((d) => d.id === id);
-        if (target) {
-          const extension = newFile.type?.includes('pdf') ? 'pdf' : 'png';
-          updatedStoragePath = `events/${target.eventId}/${Date.now()}_updated.${extension}`;
+    const target = documents.find((d) => d.id === id);
 
-          const { error: uploadError } = await supabase.storage
-            .from(BUCKET_NAME)
-            .upload(updatedStoragePath, newFile, {
-              contentType: newFile.type,
-              upsert: true,
+    // If newPages provided for multi-page document
+    if (newPages && newPages.length > 0 && target) {
+      if (isBackendConnected) {
+        try {
+          // Remove old document_pages records
+          await supabase.from('document_pages').delete().eq('document_id', id);
+
+          const uploadedPages: DocumentPage[] = [];
+          for (let i = 0; i < newPages.length; i++) {
+            const page = newPages[i];
+            const pageNum = i + 1;
+            const ext = page.mimeType?.includes('png')
+              ? 'png'
+              : page.mimeType?.includes('webp')
+              ? 'webp'
+              : page.mimeType?.includes('svg')
+              ? 'svg'
+              : 'jpg';
+
+            const pageStoragePath = `events/${target.eventId}/documents/${id}/page-${String(pageNum).padStart(3, '0')}.${ext}`;
+
+            let uploadBlob: Blob | null = page.file || null;
+            if (!uploadBlob && page.dataUrl?.startsWith('data:')) {
+              uploadBlob = dataUrlToBlob(page.dataUrl);
+            }
+
+            if (uploadBlob) {
+              await supabase.storage.from(BUCKET_NAME).upload(pageStoragePath, uploadBlob, {
+                contentType: page.mimeType || 'image/jpeg',
+                upsert: true,
+              });
+            }
+
+            const { data: dbPage } = await supabase
+              .from('document_pages')
+              .insert({
+                document_id: id,
+                storage_path: pageStoragePath,
+                mime_type: page.mimeType || 'image/jpeg',
+                sort_order: pageNum,
+              })
+              .select('id')
+              .single();
+
+            const pagePublicUrl = getStorageFileUrl(pageStoragePath);
+            uploadedPages.push({
+              id: dbPage?.id ? String(dbPage.id) : `page-${Date.now()}-${pageNum}`,
+              documentId: id,
+              storagePath: pageStoragePath,
+              fileUrl: pagePublicUrl,
+              mimeType: page.mimeType || 'image/jpeg',
+              sortOrder: pageNum,
+              createdAt: now,
             });
-
-          if (!uploadError) {
-            updatedFileUrl = getStorageFileUrl(updatedStoragePath);
           }
+
+          updatedDocPages = uploadedPages;
+          updatedPages = uploadedPages.map((p) => p.fileUrl);
+          updatedFileUrl = updatedPages[0];
+          updatedStoragePath = uploadedPages[0]?.storagePath;
+        } catch (err) {
+          console.error('Error updating document pages in Supabase:', err);
+        }
+      } else {
+        const localPages: DocumentPage[] = newPages.map((p, idx) => ({
+          id: `page-${Date.now()}-${idx + 1}`,
+          documentId: id,
+          storagePath: '',
+          fileUrl: p.dataUrl,
+          mimeType: p.mimeType,
+          sortOrder: idx + 1,
+          createdAt: now,
+        }));
+        updatedDocPages = localPages;
+        updatedPages = localPages.map((p) => p.fileUrl);
+        updatedFileUrl = updatedPages[0];
+      }
+    } else if (isBackendConnected && newFile && target) {
+      try {
+        const extension = newFile.type?.includes('pdf') ? 'pdf' : 'png';
+        updatedStoragePath = `events/${target.eventId}/${Date.now()}_updated.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(BUCKET_NAME)
+          .upload(updatedStoragePath, newFile, {
+            contentType: newFile.type,
+            upsert: true,
+          });
+
+        if (!uploadError) {
+          updatedFileUrl = getStorageFileUrl(updatedStoragePath);
+          updatedPages = [updatedFileUrl];
         }
       } catch (err) {
         console.warn('Storage upload error during document update:', err);
@@ -589,7 +881,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ...updates,
             storagePath: updatedStoragePath || d.storagePath,
             fileUrl: updatedFileUrl || d.fileUrl,
-            pages: updatedFileUrl ? [updatedFileUrl] : d.pages,
+            pages: updatedPages !== undefined ? updatedPages : d.pages,
+            documentPages: updatedDocPages !== undefined ? updatedDocPages : d.documentPages,
             updatedAt: now,
           };
         }
@@ -619,12 +912,23 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const target = documents.find((d) => d.id === id);
     setDocuments((prev) => prev.filter((d) => d.id !== id));
     if (activeViewerDoc?.id === id) setActiveViewerDoc(null);
+    if (viewingDocumentId === id) setViewingDocumentId(null);
 
     if (isBackendConnected && target) {
       try {
+        const pathsToDelete: string[] = [];
         if (target.storagePath) {
-          await supabase.storage.from(BUCKET_NAME).remove([target.storagePath]);
+          pathsToDelete.push(target.storagePath);
         }
+        if (target.documentPages && target.documentPages.length > 0) {
+          target.documentPages.forEach((p) => {
+            if (p.storagePath) pathsToDelete.push(p.storagePath);
+          });
+        }
+        if (pathsToDelete.length > 0) {
+          await supabase.storage.from(BUCKET_NAME).remove(pathsToDelete);
+        }
+        // DB cascade deletes from document_pages when deleting from documents
         await supabase.from('documents').delete().eq('id', id);
       } catch (err) {
         console.error('Error deleting document from Supabase:', err);

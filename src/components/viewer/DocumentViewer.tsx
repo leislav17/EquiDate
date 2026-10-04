@@ -34,9 +34,17 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Compute pages list
+  // Determine if document is PDF
+  const isPdf = Boolean(
+    document.mimeType?.toLowerCase() === 'application/pdf' ||
+    document.fileUrl?.toLowerCase().endsWith('.pdf') ||
+    document.fileUrl?.toLowerCase().includes('.pdf?') ||
+    document.storagePath?.toLowerCase().endsWith('.pdf')
+  );
+
+  // Compute pages list (only for image documents)
   const pages: string[] =
-    document.pages && document.pages.length > 0
+    !isPdf && document.pages && document.pages.length > 0
       ? document.pages
       : [document.fileUrl];
 
@@ -83,14 +91,14 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
   // Drag to pan when zoomed
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale > 1) {
+    if (!isPdf && scale > 1) {
       setIsDragging(true);
       dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging && scale > 1) {
+    if (!isPdf && isDragging && scale > 1) {
       setPan({
         x: e.clientX - dragStartRef.current.x,
         y: e.clientY - dragStartRef.current.y
@@ -104,7 +112,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
   // Touch handlers for mobile pan
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && scale > 1) {
+    if (!isPdf && e.touches.length === 1 && scale > 1) {
       setIsDragging(true);
       dragStartRef.current = {
         x: e.touches[0].clientX - pan.x,
@@ -114,7 +122,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (isDragging && scale > 1 && e.touches.length === 1) {
+    if (!isPdf && isDragging && scale > 1 && e.touches.length === 1) {
       setPan({
         x: e.touches[0].clientX - dragStartRef.current.x,
         y: e.touches[0].clientY - dragStartRef.current.y
@@ -128,8 +136,18 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
 
   const handleDownload = () => {
     const link = window.document.createElement('a');
-    link.href = currentFile;
-    link.download = `${document.name.replace(/\s+/g, '_')}_pag${currentPage}.svg`;
+    link.href = document.fileUrl;
+    const ext = isPdf
+      ? 'pdf'
+      : document.mimeType?.includes('png')
+      ? 'png'
+      : document.mimeType?.includes('jpeg') || document.mimeType?.includes('jpg')
+      ? 'jpg'
+      : document.mimeType?.includes('webp')
+      ? 'webp'
+      : 'svg';
+    link.download = `${document.name.replace(/\s+/g, '_')}.${ext}`;
+    link.target = '_blank';
     window.document.body.appendChild(link);
     link.click();
     window.document.body.removeChild(link);
@@ -175,30 +193,32 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           </span>
         </div>
 
-        {/* Center: Pagination controls */}
-        <div className="flex items-center gap-1.5 shrink-0 bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1">
-          <button
-            type="button"
-            onClick={handlePrevPage}
-            disabled={currentPage <= 1}
-            aria-label="Página anterior"
-            className="p-1 text-neutral-300 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-300 transition-colors cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="font-mono text-neutral-300 tabular-nums px-1 text-[11px] sm:text-xs">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={handleNextPage}
-            disabled={currentPage >= totalPages}
-            aria-label="Página siguiente"
-            className="p-1 text-neutral-300 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-300 transition-colors cursor-pointer"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {/* Center: Pagination controls (only if multipage image) */}
+        {!isPdf && totalPages > 1 && (
+          <div className="flex items-center gap-1.5 shrink-0 bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1">
+            <button
+              type="button"
+              onClick={handlePrevPage}
+              disabled={currentPage <= 1}
+              aria-label="Página anterior"
+              className="p-1 text-neutral-300 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-300 transition-colors cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="font-mono text-neutral-300 tabular-nums px-1 text-[11px] sm:text-xs">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={handleNextPage}
+              disabled={currentPage >= totalPages}
+              aria-label="Página siguiente"
+              className="p-1 text-neutral-300 hover:text-white disabled:opacity-30 disabled:hover:text-neutral-300 transition-colors cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Right: Zoom & View controls */}
         <div className="flex items-center gap-1 shrink-0">
@@ -277,64 +297,114 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
       </div>
 
       {/* Main Document Viewer Canvas */}
-      <div
-        ref={containerRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className={`relative flex-1 w-full overflow-hidden flex items-center justify-center bg-neutral-950 select-none ${
-          scale > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
-        } ${isModalOrFullscreen ? 'h-[calc(100vh-50px)]' : 'min-h-[460px] sm:min-h-[580px] max-h-[700px]'}`}
-      >
+      {isPdf ? (
         <div
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
-            transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
-          }}
-          className="flex items-center justify-center p-2 sm:p-4 max-w-full"
+          className={`relative flex-1 w-full overflow-auto bg-neutral-900 flex items-start justify-center ${
+            isModalOrFullscreen ? 'h-[calc(100vh-50px)]' : 'min-h-[460px] sm:min-h-[580px] max-h-[700px]'
+          }`}
+          style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          {/* Support for Images (SVG Data URI, PNG, JPG, WebP) */}
-          <img
-            src={currentFile}
-            alt={`${document.name} - Página ${currentPage}`}
-            className="max-h-[82vh] max-w-[96vw] sm:max-w-2xl object-contain shadow-2xl rounded-sm bg-white pointer-events-none"
-            referrerPolicy="no-referrer"
-            draggable={false}
-          />
+          <div
+            style={{
+              width: scale === 1 ? '100%' : `${Math.round(scale * 100)}%`,
+              height: scale === 1 ? '100%' : `${Math.round(scale * 100)}%`,
+              minHeight: '100%',
+              transition: 'width 0.15s ease-out, height 0.15s ease-out'
+            }}
+            className="w-full h-full flex-1"
+          >
+            <object
+              data={`${document.fileUrl}#view=FitH&toolbar=1&navpanes=0&zoom=${Math.round(scale * 100)}`}
+              type="application/pdf"
+              className="w-full h-full border-0 block bg-white"
+              style={{ minHeight: '100%', width: '100%' }}
+            >
+              <iframe
+                src={`${document.fileUrl}#view=FitH&toolbar=1&navpanes=0&scrollbar=1&zoom=${Math.round(scale * 100)}`}
+                title={document.name}
+                className="w-full h-full border-0 block bg-white"
+                style={{ minHeight: '100%', width: '100%' }}
+              >
+                <div className="w-full h-full min-h-[350px] flex flex-col items-center justify-center p-6 bg-neutral-900 text-white text-center">
+                  <FileText className="w-10 h-10 text-[#93c5fd] mb-2" />
+                  <p className="font-bold text-sm mb-1">{document.name}</p>
+                  <p className="text-xs text-neutral-400 mb-3 max-w-xs">
+                    Abrí o descargá el archivo para ver todas las páginas.
+                  </p>
+                  <a
+                    href={document.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-1.5 bg-[#123E59] hover:bg-[#0e3247] text-white rounded-lg text-xs font-bold transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Abrir PDF</span>
+                  </a>
+                </div>
+              </iframe>
+            </object>
+          </div>
         </div>
+      ) : (
+        <div
+          ref={containerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className={`relative flex-1 w-full overflow-hidden flex items-center justify-center bg-neutral-950 select-none ${
+            scale > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+          } ${isModalOrFullscreen ? 'h-[calc(100vh-50px)]' : 'min-h-[460px] sm:min-h-[580px] max-h-[700px]'}`}
+        >
+          <div
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+            className="flex items-center justify-center p-2 sm:p-4 max-w-full"
+          >
+            {/* Support for Images (SVG Data URI, PNG, JPG, WebP) */}
+            <img
+              src={currentFile}
+              alt={`${document.name} - Página ${currentPage}`}
+              className="max-h-[82vh] max-w-[96vw] sm:max-w-2xl object-contain shadow-2xl rounded-sm bg-white pointer-events-none"
+              referrerPolicy="no-referrer"
+              draggable={false}
+            />
+          </div>
 
-        {/* Mobile touch zoom helper pill */}
-        <div className="sm:hidden absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md border border-neutral-700 text-neutral-200 px-3 py-1.5 rounded-full shadow-lg text-[11px] font-medium z-10">
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="p-1 hover:text-white active:scale-95 transition-transform"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <span className="font-mono tabular-nums px-1">{Math.round(scale * 100)}%</span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="p-1 hover:text-white active:scale-95 transition-transform"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          {scale !== 1 && (
+          {/* Mobile touch zoom helper pill */}
+          <div className="sm:hidden absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md border border-neutral-700 text-neutral-200 px-3 py-1.5 rounded-full shadow-lg text-[11px] font-medium z-10">
             <button
               type="button"
-              onClick={handleResetZoom}
-              className="pl-1 text-neutral-400 hover:text-white text-[10px]"
+              onClick={handleZoomOut}
+              className="p-1 hover:text-white active:scale-95 transition-transform cursor-pointer"
             >
-              100%
+              <ZoomOut className="w-4 h-4" />
             </button>
-          )}
+            <span className="font-mono tabular-nums px-1">{Math.round(scale * 100)}%</span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="p-1 hover:text-white active:scale-95 transition-transform cursor-pointer"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            {scale !== 1 && (
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="pl-1 text-neutral-400 hover:text-white text-[10px] cursor-pointer"
+              >
+                100%
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 

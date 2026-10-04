@@ -27,6 +27,14 @@ interface DocumentManagerModalProps {
   event: EquestrianEvent;
 }
 
+interface PageItem {
+  id: string;
+  file?: File;
+  dataUrl: string;
+  name: string;
+  mimeType: string;
+}
+
 export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   isOpen,
   onClose,
@@ -63,10 +71,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const [docType, setDocType] = useState<DocumentType>('PROGRAM');
   const [docDay, setDocDay] = useState<string>('general');
   const [docName, setDocName] = useState<string>('');
-  const [fileDataUrl, setFileDataUrl] = useState<string>('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileMimeType, setFileMimeType] = useState<DocumentItem['mimeType']>('image/png');
-  const [fileName, setFileName] = useState<string>('');
+
+  // Multi-page image items
+  const [pageItems, setPageItems] = useState<PageItem[]>([]);
+  // Single PDF file
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfName, setPdfName] = useState<string>('');
+
   const [formError, setFormError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,43 +107,104 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     }
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setFormError('');
 
-    setSelectedFile(file);
-    setFileName(file.name);
-    const mime = file.type || 'image/png';
-    setFileMimeType(mime as any);
+    // Check if a PDF is selected
+    const pdf = files.find(
+      (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+    );
 
-    // Read as Data URL
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setFileDataUrl(reader.result);
+    if (pdf) {
+      setPdfFile(pdf);
+      setPdfName(pdf.name);
+      setPageItems([]);
+      return;
+    }
+
+    // Filter allowed image types (JPG, JPEG, PNG, WebP)
+    const imageFiles = files.filter(
+      (f) =>
+        f.type.startsWith('image/') ||
+        f.name.toLowerCase().match(/\.(jpe?g|png|webp|svg)$/)
+    );
+
+    if (imageFiles.length === 0) {
+      setFormError('Formatos permitidos para páginas: JPG, JPEG, PNG y WebP (o archivo PDF).');
+      return;
+    }
+
+    setPdfFile(null);
+    setPdfName('');
+
+    const loaded: PageItem[] = [];
+    for (let i = 0; i < imageFiles.length; i++) {
+      const f = imageFiles[i];
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.readAsDataURL(f);
+      });
+      if (dataUrl) {
+        loaded.push({
+          id: `page-${Date.now()}-${Math.random().toString(36).substring(2, 7)}-${i}`,
+          file: f,
+          dataUrl,
+          name: f.name,
+          mimeType: f.type || 'image/jpeg',
+        });
       }
-    };
-    reader.readAsDataURL(file);
+    }
+
+    setPageItems((prev) => [...prev, ...loaded]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Helper to quickly load a realistic sample template if admin wants to test without local files
+  const handleMovePage = (index: number, direction: 'up' | 'down') => {
+    setPageItems((prev) => {
+      const targetIdx = direction === 'up' ? index - 1 : index + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[targetIdx];
+      next[targetIdx] = temp;
+      return next;
+    });
+  };
+
+  const handleRemovePage = (index: number) => {
+    setPageItems((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Helper to load realistic multi-page demo template
   const handleUseSampleFile = (type: DocumentType) => {
-    setSelectedFile(null);
+    setPdfFile(null);
+    setPdfName('');
     if (type === 'PROGRAM') {
-      const sample = createAnteprogramaDoc({
+      const page1 = createAnteprogramaDoc({
         eventName: event.name,
         venue: event.venue,
         dates: `${event.startDate} — ${event.endDate}`,
         page: 1,
         totalPages: 2
       });
-      setFileDataUrl(sample);
-      setFileMimeType('image/svg+xml' as any);
-      setFileName('anteprograma_oficial.svg');
+      const page2 = createAnteprogramaDoc({
+        eventName: event.name,
+        venue: event.venue,
+        dates: `${event.startDate} — ${event.endDate}`,
+        page: 2,
+        totalPages: 2
+      });
+      setPageItems([
+        { id: `sample-${Date.now()}-1`, dataUrl: page1, name: 'anteprograma_pag1.svg', mimeType: 'image/svg+xml' },
+        { id: `sample-${Date.now()}-2`, dataUrl: page2, name: 'anteprograma_pag2.svg', mimeType: 'image/svg+xml' },
+      ]);
     } else if (type === 'START_LIST') {
       const sample = createStartListDoc({
         eventName: event.name,
-        testTitle: 'Orden de Ingreso — Prueba Libre',
+        testTitle: docName || 'Orden de Ingreso',
         height: '1.20 m',
         dayFormatted: docDay !== 'general' ? docDay : 'Jornada Oficial',
         tableBaremo: 'Tabla A al cronómetro',
@@ -142,13 +214,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
           { order: 3, rider: 'Jinete 3', horse: 'Quick Silver', club: 'Club Hípico Argentino' },
         ]
       });
-      setFileDataUrl(sample);
-      setFileMimeType('image/svg+xml' as any);
-      setFileName('orden_ingreso.svg');
+      setPageItems([
+        { id: `sample-${Date.now()}-1`, dataUrl: sample, name: 'orden_ingreso.svg', mimeType: 'image/svg+xml' }
+      ]);
     } else {
       const sample = createResultDoc({
         eventName: event.name,
-        testTitle: 'Resultados Oficiales',
+        testTitle: docName || 'Resultados Oficiales',
         height: '1.20 m',
         dayFormatted: docDay !== 'general' ? docDay : 'Jornada Oficial',
         results: [
@@ -156,9 +228,9 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
           { rank: 2, rider: 'Segundo Puesto', horse: 'Cornet Boy', club: 'Club Alemán', r1Faults: 0, r1Time: '68.90', jumpOffFaults: 4, jumpOffTime: '33.80', prize: '$100.000' },
         ]
       });
-      setFileDataUrl(sample);
-      setFileMimeType('image/svg+xml' as any);
-      setFileName('resultados.svg');
+      setPageItems([
+        { id: `sample-${Date.now()}-1`, dataUrl: sample, name: 'resultados.svg', mimeType: 'image/svg+xml' }
+      ]);
     }
   };
 
@@ -169,60 +241,49 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
       return;
     }
 
-    let finalFileUrl = fileDataUrl;
-    if (!finalFileUrl) {
-      // Auto generate sample for this doc
-      if (docType === 'PROGRAM') {
-        finalFileUrl = createAnteprogramaDoc({
-          eventName: event.name,
-          venue: event.venue,
-          dates: `${event.startDate} — ${event.endDate}`,
-          page: 1,
-          totalPages: 1
-        });
-      } else if (docType === 'START_LIST') {
-        finalFileUrl = createStartListDoc({
-          eventName: event.name,
-          testTitle: docName,
-          height: '1.20 m',
-          dayFormatted: docDay !== 'general' ? docDay : 'Día Oficial',
-          tableBaremo: 'Dos Fases Especial',
-          starters: [
-            { order: 1, rider: 'Jinete Demostración', horse: 'Caballo Z', club: event.venue }
-          ]
-        });
-      } else {
-        finalFileUrl = createResultDoc({
-          eventName: event.name,
-          testTitle: docName,
-          height: '1.20 m',
-          dayFormatted: docDay !== 'general' ? docDay : 'Día Oficial',
-          results: [
-            { rank: 1, rider: 'Jinete Ganador', horse: 'Caballo Z', club: event.venue, r1Faults: 0, r1Time: '69.00', prize: 'Copa' }
-          ]
-        });
-      }
+    if (!pdfFile && pageItems.length === 0) {
+      setFormError('Cargá al menos una página o seleccioná un archivo PDF.');
+      return;
     }
 
-    addDocument(
-      {
-        eventId: event.id,
-        name: docName.trim(),
-        type: docType,
-        eventDate: docDay === 'general' ? null : docDay,
-        fileUrl: finalFileUrl,
-        pages: [finalFileUrl],
-        mimeType: fileMimeType,
-      },
-      selectedFile || undefined
-    );
+    if (pdfFile) {
+      addDocument(
+        {
+          eventId: event.id,
+          name: docName.trim(),
+          type: docType,
+          eventDate: docDay === 'general' ? null : docDay,
+          fileUrl: '',
+          mimeType: 'application/pdf',
+        },
+        pdfFile
+      );
+    } else {
+      addDocument(
+        {
+          eventId: event.id,
+          name: docName.trim(),
+          type: docType,
+          eventDate: docDay === 'general' ? null : docDay,
+          fileUrl: pageItems[0]?.dataUrl || '',
+          mimeType: pageItems[0]?.mimeType || 'image/jpeg',
+        },
+        undefined,
+        pageItems.map((p) => ({
+          file: p.file,
+          dataUrl: p.dataUrl,
+          name: p.name,
+          mimeType: p.mimeType,
+        }))
+      );
+    }
 
     // Reset form
     setIsAdding(false);
-    setSelectedFile(null);
+    setPageItems([]);
+    setPdfFile(null);
+    setPdfName('');
     setDocName('');
-    setFileDataUrl('');
-    setFileName('');
     setFormError('');
   };
 
@@ -369,41 +430,150 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   />
                 </div>
 
-                {/* 4. ARCHIVO (Upload / Drag & drop / Sample) */}
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                    Archivo (PDF, JPG, JPEG, PNG, WebP)
+                {/* 4. ARCHIVO O PÁGINAS MULTIPÁGINA */}
+                <div className="space-y-3">
+                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+                    Archivo o Páginas (PDF o múltiples JPG, JPEG, PNG, WebP) *
                   </label>
                   <input
                     ref={fileInputRef}
                     type="file"
+                    multiple
                     accept=".pdf,image/jpeg,image/png,image/webp,image/svg+xml"
-                    onChange={handleFileSelected}
+                    onChange={handleFilesSelected}
                     className="hidden"
                   />
 
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-xl p-4 text-center cursor-pointer bg-white transition-colors"
-                  >
-                    <Upload className="w-5 h-5 text-neutral-400 mx-auto mb-1" />
-                    {fileName ? (
-                      <p className="text-xs font-bold text-neutral-900">{fileName}</p>
-                    ) : (
-                      <>
-                        <p className="text-xs font-bold text-neutral-700">
-                          Hacé clic o arrastrá para subir archivo
-                        </p>
-                        <p className="text-[10px] text-neutral-400 mt-0.5">
-                          PDF, JPG, JPEG, PNG, WebP
-                        </p>
-                      </>
-                    )}
-                  </div>
+                  {/* If PDF file is chosen */}
+                  {pdfFile && (
+                    <div className="p-3 bg-white border border-neutral-300 rounded-xl flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center font-bold text-xs shrink-0">
+                          PDF
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-neutral-900 truncate">
+                            {pdfName || pdfFile.name}
+                          </p>
+                          <p className="text-[10px] text-neutral-500">
+                            Documento PDF oficial listo para visualización y descarga
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPdfFile(null);
+                          setPdfName('');
+                        }}
+                        className="p-1.5 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-neutral-100 transition-colors"
+                        title="Quitar PDF"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* If multiple image pages are chosen */}
+                  {pageItems.length > 0 && (
+                    <div className="space-y-2 bg-white p-3 rounded-xl border border-neutral-300 shadow-2xs">
+                      <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                        <span className="text-xs font-bold text-neutral-800">
+                          Páginas cargadas ({pageItems.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-[11px] font-bold text-neutral-900 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Agregar más páginas</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                        {pageItems.map((page, idx) => (
+                          <div
+                            key={page.id}
+                            className="flex items-center justify-between p-2 bg-neutral-50 border border-neutral-200 rounded-lg gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <img
+                                src={page.dataUrl}
+                                alt={`Pág ${idx + 1}`}
+                                className="w-8 h-10 object-cover rounded border border-neutral-300 shrink-0 bg-white"
+                              />
+                              <div className="min-w-0">
+                                <span className="font-extrabold text-neutral-900 block text-[11px]">
+                                  Página {idx + 1}
+                                </span>
+                                <span className="text-[10px] text-neutral-500 truncate block max-w-[180px] sm:max-w-xs">
+                                  {page.name}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Reorder and Delete controls */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => handleMovePage(idx, 'up')}
+                                className="p-1 text-neutral-500 hover:text-neutral-900 disabled:opacity-30 disabled:hover:text-neutral-500 rounded hover:bg-neutral-200 cursor-pointer"
+                                title="Subir página"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === pageItems.length - 1}
+                                onClick={() => handleMovePage(idx, 'down')}
+                                className="p-1 text-neutral-500 hover:text-neutral-900 disabled:opacity-30 disabled:hover:text-neutral-500 rounded hover:bg-neutral-200 cursor-pointer"
+                                title="Bajar página"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePage(idx)}
+                                className="p-1 text-red-500 hover:text-red-700 rounded hover:bg-red-50 cursor-pointer"
+                                title="Eliminar página"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <p className="text-[10px] text-neutral-500 italic pt-1">
+                        El orden seleccionado aquí se conservará exactamente en el visor vertical continuo.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Empty state file selector */}
+                  {!pdfFile && pageItems.length === 0 && (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-xl p-5 text-center cursor-pointer bg-white transition-colors"
+                    >
+                      <Upload className="w-6 h-6 text-neutral-400 mx-auto mb-1.5" />
+                      <p className="text-xs font-bold text-neutral-800">
+                        Hacé clic para seleccionar páginas o archivo
+                      </p>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        Podés seleccionar múltiples imágenes a la vez (JPG, PNG, WebP) o un archivo PDF
+                      </p>
+                      <p className="text-[10px] text-neutral-400 mt-1">
+                        Todas las imágenes formarán un único documento multipágina continuo
+                      </p>
+                    </div>
+                  )}
 
                   {/* Sample auto-generator button for convenience */}
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="text-[10px] text-neutral-400">
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-neutral-500">
                       O usá una plantilla deportiva oficial:
                     </span>
                     <button
@@ -415,25 +585,6 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     </button>
                   </div>
                 </div>
-
-                {/* File Preview Thumbnail if uploaded */}
-                {fileDataUrl && (
-                  <div className="p-2 border border-neutral-200 rounded-lg bg-white flex items-center gap-3">
-                    <img
-                      src={fileDataUrl}
-                      alt="Preview"
-                      className="w-12 h-14 object-cover border border-neutral-200 rounded"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold truncate text-neutral-900">
-                        {fileName || 'Documento listo para guardar'}
-                      </p>
-                      <span className="text-[10px] text-neutral-500 font-mono">
-                        {fileMimeType}
-                      </span>
-                    </div>
-                  </div>
-                )}
 
                 {/* Form Buttons */}
                 <div className="pt-2 flex justify-end gap-2">

@@ -10,7 +10,8 @@ import {
   Minimize2,
   RotateCcw,
   Download,
-  Share2
+  Share2,
+  FileText
 } from 'lucide-react';
 
 interface DedicatedDocumentViewProps {
@@ -23,132 +24,62 @@ export const DedicatedDocumentView: React.FC<DedicatedDocumentViewProps> = ({ do
   const doc = getDocumentById(documentId);
   const event = doc ? getEventById(doc.eventId) : null;
 
-  const [currentPage, setCurrentPage] = useState<number>(1);
   const [scale, setScale] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
 
-  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Pages array
-  const pages: string[] = doc?.pages && doc.pages.length > 0 ? doc.pages : [doc?.fileUrl || ''];
-  const totalPages = pages.length;
-  const currentFile = pages[currentPage - 1] || doc?.fileUrl || '';
+  // Determine if document is PDF
+  const isPdf = Boolean(
+    doc?.mimeType?.toLowerCase() === 'application/pdf' ||
+    doc?.fileUrl?.toLowerCase().endsWith('.pdf') ||
+    doc?.fileUrl?.toLowerCase().includes('.pdf?') ||
+    doc?.storagePath?.toLowerCase().endsWith('.pdf')
+  );
+
+  // Pages array for image-based documents
+  const allPages: string[] = !isPdf && doc?.pages && doc.pages.length > 0 ? doc.pages : [doc?.fileUrl || ''];
+  const totalPages = allPages.length;
 
   // Reset when documentId changes
   useEffect(() => {
-    setCurrentPage(1);
     setScale(1);
-    setPan({ x: 0, y: 0 });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
   }, [documentId]);
 
   // Zoom handlers
   const handleZoomIn = () => {
-    setScale((prev) => Math.min(prev + 0.35, 4));
+    setScale((prev) => Math.min(prev + 0.25, 2.5));
   };
 
   const handleZoomOut = () => {
-    setScale((prev) => {
-      const next = Math.max(prev - 0.35, 0.6);
-      if (next <= 1) setPan({ x: 0, y: 0 });
-      return next;
-    });
+    setScale((prev) => Math.max(prev - 0.25, 0.75));
   };
 
   const handleResetZoom = () => {
     setScale(1);
-    setPan({ x: 0, y: 0 });
   };
 
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
-      setPan({ x: 0, y: 0 });
-    }
-  };
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage((prev) => prev + 1);
-      setPan({ x: 0, y: 0 });
-    }
-  };
-
-  // Drag & Pan handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale > 1) {
-      setIsDragging(true);
-      dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging && scale > 1) {
-      setPan({
-        x: e.clientX - dragStartRef.current.x,
-        y: e.clientY - dragStartRef.current.y
-      });
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Touch handlers for mobile
-  const lastTouchDistRef = useRef<number | null>(null);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && scale > 1) {
-      setIsDragging(true);
-      dragStartRef.current = {
-        x: e.touches[0].clientX - pan.x,
-        y: e.touches[0].clientY - pan.y
-      };
-    } else if (e.touches.length === 2) {
-      // Pinch to zoom start
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      lastTouchDistRef.current = dist;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && isDragging && scale > 1) {
-      setPan({
-        x: e.touches[0].clientX - dragStartRef.current.x,
-        y: e.touches[0].clientY - dragStartRef.current.y
-      });
-    } else if (e.touches.length === 2 && lastTouchDistRef.current !== null) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = dist - lastTouchDistRef.current;
-      if (Math.abs(delta) > 4) {
-        const factor = delta > 0 ? 0.05 : -0.05;
-        setScale((prev) => Math.max(0.7, Math.min(3.5, prev + factor)));
-        lastTouchDistRef.current = dist;
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    lastTouchDistRef.current = null;
-  };
-
-  // Download action
+  // Download action with correct file extension
   const handleDownload = () => {
     if (!doc) return;
     const link = window.document.createElement('a');
-    link.href = currentFile;
-    link.download = `${doc.name.replace(/\s+/g, '_')}_pag${currentPage}.svg`;
+    link.href = doc.fileUrl;
+    const ext = isPdf
+      ? 'pdf'
+      : doc.mimeType?.includes('png')
+      ? 'png'
+      : doc.mimeType?.includes('webp')
+      ? 'webp'
+      : doc.mimeType?.includes('jpeg') || doc.mimeType?.includes('jpg')
+      ? 'jpg'
+      : 'svg';
+    link.download = `${doc.name.replace(/\s+/g, '_')}.${ext}`;
+    link.target = '_blank';
     window.document.body.appendChild(link);
     link.click();
     window.document.body.removeChild(link);
@@ -174,10 +105,10 @@ export const DedicatedDocumentView: React.FC<DedicatedDocumentViewProps> = ({ do
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setViewingDocumentId(null);
-      } else if (e.key === 'ArrowRight') {
-        handleNextPage();
-      } else if (e.key === 'ArrowLeft') {
-        handlePrevPage();
+      } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+        scrollContainerRef.current?.scrollBy({ top: 300, behavior: 'smooth' });
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        scrollContainerRef.current?.scrollBy({ top: -300, behavior: 'smooth' });
       } else if (e.key === '+' || e.key === '=') {
         handleZoomIn();
       } else if (e.key === '-') {
@@ -186,7 +117,7 @@ export const DedicatedDocumentView: React.FC<DedicatedDocumentViewProps> = ({ do
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, totalPages]);
+  }, []);
 
   if (!doc) {
     return (
@@ -240,30 +171,12 @@ export const DedicatedDocumentView: React.FC<DedicatedDocumentViewProps> = ({ do
           </div>
         </div>
 
-        {/* Center: Pagination controls (if multipage) */}
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1 bg-neutral-100 border border-neutral-200 rounded-lg px-2 py-1 shrink-0">
-            <button
-              type="button"
-              onClick={handlePrevPage}
-              disabled={currentPage <= 1}
-              aria-label="Página anterior"
-              className="p-1 text-neutral-600 hover:text-neutral-900 disabled:opacity-30 transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="font-mono text-neutral-800 text-[11px] sm:text-xs font-bold tabular-nums px-1">
-              {currentPage} / {totalPages}
+        {/* Center: Total pages badge if multipage */}
+        {!isPdf && totalPages > 1 && (
+          <div className="flex items-center gap-1.5 bg-neutral-100 border border-neutral-200 rounded-lg px-2.5 py-1 shrink-0">
+            <span className="font-mono text-neutral-800 text-[11px] sm:text-xs font-bold tabular-nums">
+              {totalPages} páginas
             </span>
-            <button
-              type="button"
-              onClick={handleNextPage}
-              disabled={currentPage >= totalPages}
-              aria-label="Página siguiente"
-              className="p-1 text-neutral-600 hover:text-neutral-900 disabled:opacity-30 transition-colors cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         )}
 
@@ -332,71 +245,119 @@ export const DedicatedDocumentView: React.FC<DedicatedDocumentViewProps> = ({ do
       {/* ======================================================== */}
       {/* 2. DEDICATED FULL-VIEWPORT DOCUMENT CANVAS              */}
       {/* ======================================================== */}
-      <div
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className={`relative flex-1 w-full h-[calc(100vh-52px)] overflow-auto flex items-center justify-center p-2 sm:p-6 bg-neutral-200/50 ${
-          scale > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
-        }`}
-      >
-        {/* Document Page Float Badge (matching reference screenshot "1 of 1") */}
-        <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur-md text-white px-2.5 py-1 rounded-full text-[11px] font-mono font-bold tracking-wide pointer-events-none shadow-md">
-          {currentPage} of {totalPages}
-        </div>
-
-        {/* Transformed Document Container */}
+      {isPdf ? (
         <div
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
-            transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)'
-          }}
-          className="flex items-center justify-center max-w-full max-h-full"
+          className="relative flex-1 w-full h-[calc(100vh-52px)] overflow-auto bg-neutral-900 flex items-start justify-center"
+          style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          {/* Document image / page */}
-          <img
-            src={currentFile}
-            alt={`${doc.name} - Página ${currentPage}`}
-            className="max-h-[92vh] max-w-[98vw] md:max-w-[90vw] object-contain shadow-xl rounded-sm bg-white pointer-events-none"
-            referrerPolicy="no-referrer"
-            draggable={false}
-          />
+          <div
+            style={{
+              width: scale === 1 ? '100%' : `${Math.round(scale * 100)}%`,
+              height: scale === 1 ? '100%' : `${Math.round(scale * 100)}%`,
+              minHeight: '100%',
+              transition: 'width 0.15s ease-out, height 0.15s ease-out'
+            }}
+            className="w-full h-full flex-1"
+          >
+            <object
+              data={`${doc.fileUrl}#view=FitH&toolbar=1&navpanes=0&zoom=${Math.round(scale * 100)}`}
+              type="application/pdf"
+              className="w-full h-full border-0 block bg-white"
+              style={{ minHeight: '100%', width: '100%' }}
+            >
+              <iframe
+                src={`${doc.fileUrl}#view=FitH&toolbar=1&navpanes=0&scrollbar=1&zoom=${Math.round(scale * 100)}`}
+                title={doc.name}
+                className="w-full h-full border-0 block bg-white"
+                style={{ minHeight: '100%', width: '100%' }}
+              >
+                <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center p-8 bg-neutral-900 text-white text-center">
+                  <FileText className="w-12 h-12 text-[#93c5fd] mb-3" />
+                  <p className="font-bold text-sm mb-1">{doc.name}</p>
+                  <p className="text-xs text-neutral-400 mb-4 max-w-sm">
+                    Este dispositivo requiere abrir el archivo PDF directamente para visualizar todas sus páginas.
+                  </p>
+                  <a
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-[#123E59] hover:bg-[#0e3247] text-white rounded-xl text-xs font-bold transition-all shadow-md inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Abrir o Descargar PDF</span>
+                  </a>
+                </div>
+              </iframe>
+            </object>
+          </div>
         </div>
+      ) : (
+        <div
+          ref={scrollContainerRef}
+          className="relative flex-1 w-full h-[calc(100vh-52px)] overflow-y-auto overflow-x-auto bg-[#e5e7eb] flex flex-col items-center py-4 sm:py-6 px-2 sm:px-4"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <div
+            style={{
+              width: scale === 1 ? '100%' : `${Math.round(scale * 100)}%`,
+              maxWidth: scale === 1 ? '52rem' : `${Math.round(scale * 52)}rem`,
+              transition: 'width 0.15s ease-out, max-width 0.15s ease-out'
+            }}
+            className="flex flex-col items-center gap-4 sm:gap-6 w-full mx-auto"
+          >
+            {allPages.map((pageUrl, idx) => (
+              <div
+                key={idx}
+                id={`page-${idx + 1}`}
+                className="w-full relative flex flex-col items-center"
+              >
+                {totalPages > 1 && (
+                  <div className="w-full flex items-center justify-between px-1 mb-1.5 text-[11px] font-mono font-bold text-neutral-500 tracking-wider">
+                    <span>PÁGINA {idx + 1} DE {totalPages}</span>
+                  </div>
+                )}
+                <img
+                  src={pageUrl}
+                  alt={`${doc.name} - Página ${idx + 1}`}
+                  className="w-full h-auto object-contain shadow-lg rounded-xs bg-white border border-neutral-300"
+                  loading={idx === 0 ? "eager" : "lazy"}
+                  draggable={false}
+                />
+              </div>
+            ))}
+          </div>
 
-        {/* Mobile floating zoom & controls pill at bottom */}
-        <div className="sm:hidden fixed bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md text-white px-3.5 py-2 rounded-full shadow-2xl z-30 border border-neutral-700">
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="p-1 hover:text-white active:scale-95 transition-transform"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <span className="font-mono text-xs font-bold tabular-nums px-1">
-            {Math.round(scale * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="p-1 hover:text-white active:scale-95 transition-transform"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          {scale !== 1 && (
+          {/* Mobile floating zoom pill at bottom */}
+          <div className="sm:hidden fixed bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md text-white px-3.5 py-2 rounded-full shadow-2xl z-30 border border-neutral-700">
             <button
               type="button"
-              onClick={handleResetZoom}
-              className="text-[10px] text-neutral-400 hover:text-white pl-1 font-semibold"
+              onClick={handleZoomOut}
+              className="p-1 hover:text-white active:scale-95 transition-transform cursor-pointer"
             >
-              100%
+              <ZoomOut className="w-4 h-4" />
             </button>
-          )}
+            <span className="font-mono text-xs font-bold tabular-nums px-1">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              className="p-1 hover:text-white active:scale-95 transition-transform cursor-pointer"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            {scale !== 1 && (
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="text-[10px] text-neutral-400 hover:text-white pl-1 font-semibold cursor-pointer"
+              >
+                100%
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

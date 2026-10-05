@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { TransmissionPage } from './components/public/Transmission';
 import { EquestrianProvider, useEquestrian } from './context/EquestrianContext';
 import { Header } from './components/common/Header';
 import { CompetitionList } from './components/public/CompetitionList';
@@ -12,15 +13,26 @@ const AppContent: React.FC = () => {
     activeView,
     selectedEventId,
     viewingDocumentId,
-    isAdmin
+    isAdmin,
+    isLoading,
+    dataError,
+    refreshData
   } = useEquestrian();
+
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
   // - No competition detail card
   // - No accordions
   // - 100% viewport space dedicated to the document
-  if (viewingDocumentId) {
+  if (viewingDocumentId && !isLoading && !dataError) {
     return <DedicatedDocumentView documentId={viewingDocumentId} />;
   }
 
@@ -31,9 +43,10 @@ const AppContent: React.FC = () => {
 
       {/* Main Content Router */}
       <main className="flex-1 w-full">
-        {activeView === 'admin' ? (
+        {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
+        {transmissionId ? <TransmissionPage dayId={transmissionId} /> : activeView === 'admin' ? (
           isAdmin ? <AdminDashboard /> : <AdminLogin />
-        ) : selectedEventId ? (
+        ) : isLoading ? <p role="status" className="p-8 text-center">Cargando concursos…</p> : dataError ? null : selectedEventId ? (
           <CompetitionDetail />
         ) : (
           <CompetitionList />

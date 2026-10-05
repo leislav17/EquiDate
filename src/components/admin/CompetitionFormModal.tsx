@@ -13,7 +13,7 @@ interface CompetitionFormModalProps {
     startDate: string;
     endDate: string;
     status: EventStatus;
-  }) => void;
+  }) => Promise<void>;
   initialData?: EquestrianEvent | null;
 }
 
@@ -31,6 +31,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
   const [endDate, setEndDate] = useState('2026-10-11');
   const [status, setStatus] = useState<EventStatus>('published');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -55,7 +56,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Por favor ingresá el nombre del concurso.');
@@ -74,7 +75,10 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
       return;
     }
 
-    onSave({
+    setError('');
+    setSaving(true);
+    try {
+    await onSave({
       name: name.trim(),
       venue: venue.trim(),
       city: city.trim() || undefined,
@@ -84,6 +88,8 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
       status
     });
     onClose();
+    } catch (error) { setError((error as Error).message || 'No se pudo guardar el concurso.'); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -234,6 +240,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="px-5 py-2 text-xs font-bold text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer shadow-xs"
             >
               Guardar Concurso

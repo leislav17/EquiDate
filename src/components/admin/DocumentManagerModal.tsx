@@ -19,7 +19,6 @@ import {
   Check,
   Eye
 } from 'lucide-react';
-import { createStartListDoc, createResultDoc, createAnteprogramaDoc } from '../../data/sampleDocuments';
 
 interface DocumentManagerModalProps {
   isOpen: boolean;
@@ -42,6 +41,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 }) => {
   const {
     getDocumentsForEvent,
+    classes,
     addDocument,
     updateDocument,
     deleteDocument,
@@ -70,6 +70,8 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   // New doc fields
   const [docType, setDocType] = useState<DocumentType>('PROGRAM');
   const [docDay, setDocDay] = useState<string>('general');
+  const [docClass, setDocClass] = useState('');
+  const [saving, setSaving] = useState(false);
   const [docName, setDocName] = useState<string>('');
 
   // Multi-page image items
@@ -85,6 +87,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
   const handleTypeChange = (newType: DocumentType) => {
     setDocType(newType);
+    setDocClass('');
     if (newType === 'PROGRAM') {
       setDocDay('general');
       if (!docName || docName.startsWith('Orden') || docName.startsWith('Resultado')) {
@@ -178,63 +181,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     setPageItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  // Helper to load realistic multi-page demo template
-  const handleUseSampleFile = (type: DocumentType) => {
-    setPdfFile(null);
-    setPdfName('');
-    if (type === 'PROGRAM') {
-      const page1 = createAnteprogramaDoc({
-        eventName: event.name,
-        venue: event.venue,
-        dates: `${event.startDate} — ${event.endDate}`,
-        page: 1,
-        totalPages: 2
-      });
-      const page2 = createAnteprogramaDoc({
-        eventName: event.name,
-        venue: event.venue,
-        dates: `${event.startDate} — ${event.endDate}`,
-        page: 2,
-        totalPages: 2
-      });
-      setPageItems([
-        { id: `sample-${Date.now()}-1`, dataUrl: page1, name: 'anteprograma_pag1.svg', mimeType: 'image/svg+xml' },
-        { id: `sample-${Date.now()}-2`, dataUrl: page2, name: 'anteprograma_pag2.svg', mimeType: 'image/svg+xml' },
-      ]);
-    } else if (type === 'START_LIST') {
-      const sample = createStartListDoc({
-        eventName: event.name,
-        testTitle: docName || 'Orden de Ingreso',
-        height: '1.20 m',
-        dayFormatted: docDay !== 'general' ? docDay : 'Jornada Oficial',
-        tableBaremo: 'Tabla A al cronómetro',
-        starters: [
-          { order: 1, rider: 'Jinete 1', horse: 'Caballo Estrella', club: event.venue },
-          { order: 2, rider: 'Jinete 2', horse: 'Cornet Boy', club: 'Club Alemán' },
-          { order: 3, rider: 'Jinete 3', horse: 'Quick Silver', club: 'Club Hípico Argentino' },
-        ]
-      });
-      setPageItems([
-        { id: `sample-${Date.now()}-1`, dataUrl: sample, name: 'orden_ingreso.svg', mimeType: 'image/svg+xml' }
-      ]);
-    } else {
-      const sample = createResultDoc({
-        eventName: event.name,
-        testTitle: docName || 'Resultados Oficiales',
-        height: '1.20 m',
-        dayFormatted: docDay !== 'general' ? docDay : 'Jornada Oficial',
-        results: [
-          { rank: 1, rider: 'Jinete Ganador', horse: 'Caballo Estrella', club: event.venue, r1Faults: 0, r1Time: '67.20', jumpOffFaults: 0, jumpOffTime: '34.10', prize: '$150.000' },
-          { rank: 2, rider: 'Segundo Puesto', horse: 'Cornet Boy', club: 'Club Alemán', r1Faults: 0, r1Time: '68.90', jumpOffFaults: 4, jumpOffTime: '33.80', prize: '$100.000' },
-        ]
-      });
-      setPageItems([
-        { id: `sample-${Date.now()}-1`, dataUrl: sample, name: 'resultados.svg', mimeType: 'image/svg+xml' }
-      ]);
-    }
-  };
-
-  const handleSaveDocument = (e: React.FormEvent) => {
+  const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docName.trim()) {
       setFormError('Ingresá el nombre del documento.');
@@ -246,10 +193,14 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
       return;
     }
 
+    setSaving(true);
+    setFormError('');
+    try {
     if (pdfFile) {
-      addDocument(
+      await addDocument(
         {
           eventId: event.id,
+          classId: docClass || null,
           name: docName.trim(),
           type: docType,
           eventDate: docDay === 'general' ? null : docDay,
@@ -259,9 +210,10 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
         pdfFile
       );
     } else {
-      addDocument(
+      await addDocument(
         {
           eventId: event.id,
+          classId: docClass || null,
           name: docName.trim(),
           type: docType,
           eventDate: docDay === 'general' ? null : docDay,
@@ -285,7 +237,11 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     setPdfName('');
     setDocName('');
     setFormError('');
+    } catch (error) { setFormError((error as Error).message || 'No se pudo guardar.'); }
+    finally { setSaving(false); }
   };
+
+  const runAction = (action: Promise<unknown>) => { void action.catch(error => setFormError(error.message || 'No se pudo guardar.')); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
@@ -309,6 +265,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
           </button>
         </div>
 
+        {formError && <p role="alert" className="text-sm text-red-700 py-2">{formError}</p>}
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto py-4 space-y-5">
           {/* Top Actions: Add Document Button */}
@@ -403,7 +360,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   </label>
                   <select
                     value={docDay}
-                    onChange={(e) => setDocDay(e.target.value)}
+                    onChange={(e) => { setDocDay(e.target.value); setDocClass(''); }}
                     className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-xs sm:text-sm bg-white focus:outline-none focus:border-neutral-900 font-medium"
                   >
                     <option value="general">General (Sin día específico / Anteprograma)</option>
@@ -571,21 +528,18 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     </div>
                   )}
 
-                  {/* Sample auto-generator button for convenience */}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[10px] text-neutral-500">
-                      O usá una plantilla deportiva oficial:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleUseSampleFile(docType)}
-                      className="text-[10px] font-bold text-neutral-900 hover:underline cursor-pointer"
-                    >
-                      Autogenerar Documento Oficial
-                    </button>
-                  </div>
                 </div>
 
+                {docType !== 'PROGRAM' && <label className="block text-xs font-bold">Prueba
+                  <select aria-label="Prueba del documento" value={docClass} onChange={event => {
+                    setDocClass(event.target.value);
+                    const entry = classes.find(item => item.id === event.target.value);
+                    if (entry) setDocDay(entry.date);
+                  }} className="block w-full p-2 border rounded-lg mt-1">
+                    <option value="">Documento de la jornada (sin prueba asignada)</option>
+                    {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}</option>)}
+                  </select>
+                </label>}
                 {/* Form Buttons */}
                 <div className="pt-2 flex justify-end gap-2">
                   <button
@@ -597,6 +551,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   </button>
                   <button
                     type="submit"
+                    disabled={saving}
                     className="px-4 py-1.5 text-xs font-bold text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg cursor-pointer"
                   >
                     Guardar Documento
@@ -662,7 +617,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                               type="text"
                               defaultValue={doc.name}
                               onBlur={(e) =>
-                                updateDocument(doc.id, { name: e.target.value.trim() })
+                                runAction(updateDocument(doc.id, { name: e.target.value.trim() }))
                               }
                               className="w-full px-2 py-1 text-xs border border-neutral-300 rounded"
                             />
@@ -670,9 +625,10 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                               <select
                                 defaultValue={doc.type}
                                 onChange={(e) =>
-                                  updateDocument(doc.id, {
-                                    type: e.target.value as DocumentType
-                                  })
+                                  runAction(updateDocument(doc.id, {
+                                    type: e.target.value as DocumentType,
+                                    classId: e.target.value === 'PROGRAM' ? null : doc.classId
+                                  }))
                                 }
                                 className="text-[11px] px-2 py-0.5 border border-neutral-300 rounded bg-white"
                               >
@@ -683,12 +639,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                               <select
                                 defaultValue={doc.eventDate || 'general'}
                                 onChange={(e) =>
-                                  updateDocument(doc.id, {
+                                  runAction(updateDocument(doc.id, {
+                                    classId: null,
                                     eventDate:
                                       e.target.value === 'general'
                                         ? null
                                         : e.target.value
-                                  })
+                                  }))
                                 }
                                 className="text-[11px] px-2 py-0.5 border border-neutral-300 rounded bg-white"
                               >
@@ -730,7 +687,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     <div className="flex items-center gap-1 self-end sm:self-center">
                       <button
                         type="button"
-                        onClick={() => reorderDocument(doc.id, 'up')}
+                        onClick={() => runAction(reorderDocument(doc.id, 'up'))}
                         title="Subir orden"
                         className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
@@ -738,7 +695,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => reorderDocument(doc.id, 'down')}
+                        onClick={() => runAction(reorderDocument(doc.id, 'down'))}
                         title="Bajar orden"
                         className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
@@ -764,7 +721,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteDocument(doc.id)}
+                        onClick={() => { if (window.confirm('¿Eliminar este documento?')) runAction(deleteDocument(doc.id)); }}
                         title="Eliminar documento"
                         className="p-1.5 text-red-500 hover:text-red-700 rounded hover:bg-red-50 transition-colors cursor-pointer"
                       >

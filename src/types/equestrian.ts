@@ -29,6 +29,7 @@ export interface EquestrianEvent {
 }
 
 export interface DocumentItem {
+  classId?: string | null;
   id: string;
   eventId: string;          // Database column event_id
   name: string;
@@ -56,4 +57,24 @@ export interface DaySchedule {
   fullFormatted: string; // e.g. "VIERNES 9 OCTUBRE"
   startLists: DocumentItem[];
   results: DocumentItem[];
+}
+
+export interface CompetitionDay {
+  id: string;
+  eventId: string;
+  date: string;
+  youtubeUrl: string;
+  timeZone: string;
+}
+
+export interface CompetitionClass {
+  id: string;
+  dayId: string;
+  eventId: string;
+  date: string;
+  time: string;
+  number: string;
+  name: string;
+  description: string;
+  order: number;
 }

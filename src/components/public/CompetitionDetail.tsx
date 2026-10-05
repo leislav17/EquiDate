@@ -16,10 +16,15 @@ import {
   CheckCircle2,
   ArrowUpRight
 } from 'lucide-react';
+import { DayProgram } from './DayProgram';
+import { TransmissionButton } from './Transmission';
 import { DocumentItem } from '../../types/equestrian';
 
 export const CompetitionDetail: React.FC = () => {
   const {
+    days: competitionDays,
+    classes,
+    scheduleError,
     selectedEventId,
     setSelectedEventId,
     getEventById,
@@ -56,10 +61,10 @@ export const CompetitionDetail: React.FC = () => {
         ...header,
         startLists,
         results,
-        hasContent: startLists.length > 0 || results.length > 0
+        hasContent: startLists.length > 0 || results.length > 0 || classes.some(entry => entry.eventId === event.id && entry.date === dateStr) || competitionDays.some(day => day.eventId === event.id && day.date === dateStr && day.youtubeUrl)
       };
     });
-  }, [event, allDocs]);
+  }, [event, allDocs, classes, competitionDays]);
 
   // Initialize first day with content open by default
   React.useEffect(() => {
@@ -150,6 +155,11 @@ export const CompetitionDetail: React.FC = () => {
           </div>
         </div>
 
+        {scheduleError && <p role="status" className="mb-4 text-sm text-neutral-600">{scheduleError}</p>}
+        {allDocs.filter(doc => doc.type !== 'PROGRAM' && (!doc.eventDate || doc.eventDate < event.startDate || doc.eventDate > event.endDate)).length > 0 && <section className="mb-4 p-4 bg-white border rounded-xl">
+          <h2 className="font-bold text-sm text-[#123E59] mb-2">Otros documentos del concurso</h2>
+          {allDocs.filter(doc => doc.type !== 'PROGRAM' && (!doc.eventDate || doc.eventDate < event.startDate || doc.eventDate > event.endDate)).map(doc => <button key={doc.id} onClick={() => handleOpenDoc(doc)} className="block min-h-11 text-sm underline text-[#123E59]">{doc.name}</button>)}
+        </section>}
         {/* Content Hierarchy: ANTEPROGRAMA -> DÍAS */}
         <div className="space-y-3">
           {/* ======================================================== */}
@@ -240,6 +250,7 @@ export const CompetitionDetail: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => toggleDayAccordion(day.dateStr)}
+                  aria-expanded={isOpen}
                   className={`w-full px-5 py-4 flex items-center justify-between text-left cursor-pointer select-none transition-colors min-h-[56px] ${
                     isOpen ? 'bg-neutral-100 text-neutral-900' : 'bg-white hover:bg-neutral-50 text-neutral-800'
                   }`}
@@ -278,81 +289,8 @@ export const CompetitionDetail: React.FC = () => {
                 {/* Day Accordion Content */}
                 {isOpen && (
                   <div className="p-4 sm:p-5 border-t border-neutral-100 bg-neutral-50/50 space-y-5">
-                    {!day.hasContent ? (
-                      <div className="py-6 text-center text-neutral-400 text-xs font-medium">
-                        Información aún no disponible
-                      </div>
-                    ) : (
-                      <>
-                        {/* Section: LISTADOS */}
-                        {hasStartLists && (
-                          <div>
-                            <h4 className="text-[11px] font-black text-[#123E59] uppercase tracking-widest mb-2.5 flex items-center gap-2">
-                              <span>LISTADOS</span>
-                              <span className="h-px bg-neutral-200 flex-1" />
-                            </h4>
-
-                            <div className="space-y-2">
-                              {day.startLists.map((doc) => (
-                                <button
-                                  key={doc.id}
-                                  type="button"
-                                  onClick={() => handleOpenDoc(doc)}
-                                  className="w-full text-left p-3.5 bg-white hover:bg-[#123E59] hover:text-white border border-neutral-200/90 hover:border-[#123E59] rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 min-h-[50px] shadow-2xs group"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <FileText className="w-4 h-4 text-neutral-400 group-hover:text-[#93c5fd] shrink-0 transition-colors" />
-                                    <span className="text-xs sm:text-sm font-bold truncate">
-                                      {doc.name}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0 text-neutral-400 group-hover:text-white transition-colors">
-                                    <span className="text-[11px] font-semibold hidden xs:inline">
-                                      Ver
-                                    </span>
-                                    <ArrowUpRight className="w-4 h-4" />
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Section: RESULTADOS */}
-                        {hasResults && (
-                          <div>
-                            <h4 className="text-[11px] font-black text-emerald-800 uppercase tracking-widest mb-2.5 flex items-center gap-2">
-                              <span>RESULTADOS</span>
-                              <span className="h-px bg-neutral-200 flex-1" />
-                            </h4>
-
-                            <div className="space-y-2">
-                              {day.results.map((doc) => (
-                                <button
-                                  key={doc.id}
-                                  type="button"
-                                  onClick={() => handleOpenDoc(doc)}
-                                  className="w-full text-left p-3.5 bg-white hover:bg-emerald-950 hover:text-white border border-neutral-200/90 hover:border-emerald-900 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-3 min-h-[50px] shadow-2xs group"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 group-hover:text-emerald-400 shrink-0 transition-colors" />
-                                    <span className="text-xs sm:text-sm font-bold truncate">
-                                      {doc.name}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 shrink-0 text-emerald-700 group-hover:text-emerald-300 transition-colors">
-                                    <span className="text-[11px] font-semibold hidden xs:inline">
-                                      Ver resultados
-                                    </span>
-                                    <ArrowUpRight className="w-4 h-4" />
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
+                    {competitionDays.filter(entry => entry.eventId === event.id && entry.date === day.dateStr).map(entry => <TransmissionButton key={entry.id} day={entry} />)}
+                    <DayProgram eventId={event.id} date={day.dateStr} />
                   </div>
                 )}
               </div>

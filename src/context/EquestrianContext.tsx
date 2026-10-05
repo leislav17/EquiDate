@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus } from '../types/equestrian';
-import { INITIAL_DEMO_EVENTS, buildInitialDocuments } from '../data/demoData';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass } from '../types/equestrian';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { getYouTubeId } from '../utils/schedule';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -13,6 +13,13 @@ export interface DocumentPageInput {
 
 interface EquestrianContextType {
   events: EquestrianEvent[];
+  days: CompetitionDay[];
+  classes: CompetitionClass[];
+  dataError: string | null;
+  scheduleError: string | null;
+  saveDay: (day: Omit<CompetitionDay, 'id'>) => Promise<void>;
+  saveClass: (entry: Omit<CompetitionClass, 'id'> & { id?: string }) => Promise<void>;
+  deleteClass: (id: string) => Promise<void>;
   documents: DocumentItem[];
   activeYear: number;
   setActiveYear: (year: number) => void;
@@ -33,7 +40,6 @@ interface EquestrianContextType {
   isLoading: boolean;
   isBackendConnected: boolean;
   refreshData: () => Promise<void>;
-  seedDemoDataToSupabase: () => Promise<{ success: boolean; message: string }>;
 
   // Viewer state
   activeViewerDoc: DocumentItem | null;
@@ -66,157 +72,85 @@ interface EquestrianContextType {
   getDocumentsForEvent: (eventId: string) => DocumentItem[];
   getEventById: (id: string) => EquestrianEvent | undefined;
   getDocumentById: (id: string) => DocumentItem | undefined;
-  resetToDemoData: () => void;
 }
 
-const STORAGE_KEY_EVENTS = 'salto_ecuestre_events_v2';
-const STORAGE_KEY_DOCS = 'salto_ecuestre_docs_v2';
 
 const EquestrianContext = createContext<EquestrianContextType | undefined>(undefined);
-
-// Helper to convert data URL to Blob for Supabase Storage uploads
-function dataUrlToBlob(dataUrl: string): Blob {
-  const arr = dataUrl.split(',');
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'image/svg+xml';
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-  return new Blob([u8arr], { type: mime });
-}
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string })?.message || 'No se pudo completar la operación.');
 
 export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [events, setEvents] = useState<EquestrianEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_EVENTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_DEMO_EVENTS;
-  });
-
-  const [documents, setDocuments] = useState<DocumentItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_DOCS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return buildInitialDocuments();
-  });
-
-  const [activeYear, setActiveYear] = useState<number>(2026);
-  const [selectedMonth, setSelectedMonth] = useState<number>(9); // 9 = October
+  const [events, setEvents] = useState<EquestrianEvent[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [days, setDays] = useState<CompetitionDay[]>([]);
+  const [classes, setClasses] = useState<CompetitionClass[]>([]);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [activeYear, setActiveYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'public' | 'admin'>('public');
   const [activeViewerDoc, setActiveViewerDoc] = useState<DocumentItem | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
-
+  const [authRevision, setAuthRevision] = useState(0);
+  const requestVersion = useRef(0);
+  const previousDocumentRoute = useRef('');
   const isBackendConnected = isSupabaseConfigured();
-
-  // If Supabase is configured, admin status is strictly driven by an active authenticated session
-  // If not configured (sandbox demo mode), allow administration without blocking
-  const isAdmin = isBackendConnected ? session !== null : true;
-
-  const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(() => {
-    if (typeof window !== 'undefined' && window.location.hash.startsWith('#document-')) {
-      return window.location.hash.replace('#document-', '');
-    }
-    return null;
-  });
-
+  const isAdmin = isBackendConnected && session?.user.app_metadata?.equidate_admin === true;
+  const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
+    () => window.location.hash.startsWith('#document-') ? window.location.hash.slice(10) : null
+  );
   const setViewingDocumentId = (id: string | null) => {
     setViewingDocumentIdState(id);
-    if (typeof window !== 'undefined') {
-      if (id) {
-        window.location.hash = `document-${id}`;
-      } else {
-        if (window.location.hash.startsWith('#document-')) {
-          history.pushState('', document.title, window.location.pathname + window.location.search);
-        }
-      }
-    }
+    if (id) {
+      if (!window.location.hash.startsWith('#document-')) previousDocumentRoute.current = window.location.hash;
+      window.location.hash = 'document-' + id;
+    } else if (window.location.hash.startsWith('#document-')) window.location.hash = previousDocumentRoute.current;
   };
-
-  // Hash navigation listener
   useEffect(() => {
-    const handleHashChange = () => {
-      if (window.location.hash.startsWith('#document-')) {
-        const id = window.location.hash.replace('#document-', '');
-        setViewingDocumentIdState(id);
-      } else {
-        setViewingDocumentIdState(null);
-      }
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    window.addEventListener('popstate', handleHashChange);
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-      window.removeEventListener('popstate', handleHashChange);
-    };
+    const onHash = () => setViewingDocumentIdState(window.location.hash.startsWith('#document-') ? window.location.hash.slice(10) : null);
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
-
-  // Listen to Supabase Auth state changes
   useEffect(() => {
     if (!isBackendConnected) return;
-
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [isBackendConnected]);
-
-  // Fetch data from Supabase
-  const refreshData = useCallback(async () => {
-    if (!isBackendConnected) return;
-    setIsLoading(true);
-
-    try {
-      // 1. Fetch Events
-      const { data: dbEvents, error: eventsError } = await supabase
-        .from('events')
-        .select('*')
-        .order('start_date', { ascending: true });
-
-      if (eventsError) throw eventsError;
-
-      // 2. Fetch Documents
-      const { data: dbDocuments, error: docsError } = await supabase
-        .from('documents')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
-      if (docsError) throw docsError;
-
-      // 3. Fetch Document Pages (if table exists)
-      let dbPages: any[] = [];
-      try {
-        const { data: pagesData } = await supabase
-          .from('document_pages')
-          .select('*')
-          .order('sort_order', { ascending: true });
-        if (pagesData && Array.isArray(pagesData)) {
-          dbPages = pagesData;
-        }
-      } catch (pagesErr) {
-        console.warn('Could not query document_pages table (run migration if not created):', pagesErr);
+    let active = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (active) {
+        setSession(data.session);
+        if (error) setDataError(error.message);
       }
-
-      if (dbEvents && dbEvents.length > 0) {
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      requestVersion.current += 1;
+      setEvents([]); setDocuments([]); setDays([]); setClasses([]);
+      setSession(currentSession);
+      setAuthRevision(version => version + 1);
+    });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, [isBackendConnected]);
+  const refreshData = useCallback(async () => {
+    const version = ++requestVersion.current;
+    if (!isBackendConnected) {
+      setDataError('El servicio de concursos aún no está configurado.');
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true); setDataError(null); setScheduleError(null);
+    try {
+      const [eventResponse, documentResponse, pageResponse] = await Promise.all([
+        supabase.from('events').select('*').order('start_date'),
+        supabase.from('documents').select('*').order('sort_order'),
+        supabase.from('document_pages').select('*').order('sort_order'),
+      ]);
+      if (version !== requestVersion.current) return;
+      for (const response of [eventResponse, documentResponse, pageResponse]) {
+        if (response.error) throw response.error;
+      }
+      const dbEvents = eventResponse.data || [];
+      const dbDocuments = documentResponse.data || [];
+      const dbPages = pageResponse.data || [];
+      if (dbEvents) {
         const mappedEvents: EquestrianEvent[] = dbEvents.map((e) => ({
           id: String(e.id),
           name: e.name,
@@ -233,7 +167,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setEvents(mappedEvents);
       }
 
-      if (dbDocuments && dbDocuments.length > 0) {
+      if (dbDocuments) {
         const mappedDocs: DocumentItem[] = dbDocuments.map((d) => {
           const publicUrl = d.storage_path ? getStorageFileUrl(d.storage_path) : '';
           const isPdf =
@@ -274,6 +208,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return {
             id: String(d.id),
             eventId: String(d.event_id),
+            classId: d.class_id || null,
             name: d.name,
             type: d.type,
             eventDate: d.event_date || null,
@@ -289,777 +224,206 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
         setDocuments(mappedDocs);
       }
-    } catch (err) {
-      console.warn('Error fetching data from Supabase, falling back to local state:', err);
+
+      const [dayResponse, classResponse] = await Promise.all([
+        supabase.from('competition_days').select('*').order('event_date'),
+        supabase.from('competition_classes').select('*').order('sort_order'),
+      ]);
+      if (version !== requestVersion.current) return;
+      if (dayResponse.error || classResponse.error) {
+        setDays([]); setClasses([]);
+        setScheduleError('El cronograma no está disponible. Los documentos existentes siguen disponibles.');
+      } else {
+        setDays((dayResponse.data || []).map(day => ({
+          id: day.id, eventId: day.event_id, date: day.event_date,
+          youtubeUrl: day.youtube_url || '', timeZone: day.time_zone,
+        })));
+        setClasses((classResponse.data || []).map(entry => ({
+          id: entry.id, dayId: entry.day_id, eventId: entry.event_id,
+          date: entry.event_date, time: entry.start_time?.slice(0, 5) || '',
+          number: entry.number, name: entry.name, description: entry.description || '', order: entry.sort_order,
+        })));
+      }
+    } catch (error) {
+      if (version !== requestVersion.current) return;
+      setEvents([]); setDocuments([]); setDays([]); setClasses([]);
+      setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
     } finally {
-      setIsLoading(false);
+      if (version === requestVersion.current) setIsLoading(false);
     }
   }, [isBackendConnected]);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    if (isBackendConnected) {
-      refreshData();
-    }
-  }, [isBackendConnected, refreshData]);
-
-  // Keep local storage as offline cache
-  useEffect(() => {
+  useEffect(() => { void refreshData(); }, [refreshData, session, authRevision]);
+  const requireAdmin = () => {
+    if (!isBackendConnected || !isAdmin) throw new Error('Necesitás una sesión de administrador válida.');
+  };
+  const loginAdmin = async (email: string, password: string) => {
+    if (!isBackendConnected) return { success: false, error: 'Supabase no está configurado.' };
     try {
-      localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(events));
-      localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(documents));
-    } catch {}
-  }, [events, documents]);
-
-  // Auth: Login
-  const loginAdmin = async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    if (!isBackendConnected) {
-      // In demo mode without Supabase env vars, sign in immediately
-      return { success: true };
-    }
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data.user?.app_metadata?.equidate_admin !== true) {
+        await supabase.auth.signOut();
+        return { success: false, error: 'Esta cuenta no tiene permisos de administración.' };
       }
-
       setSession(data.session);
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Error de conexión con Supabase' };
-    }
+    } catch (error) { return { success: false, error: errorMessage(error) }; }
   };
-
-  // Auth: Logout
   const logoutAdmin = async () => {
-    if (isBackendConnected) {
-      await supabase.auth.signOut();
-    }
-    setSession(null);
-    setActiveView('public');
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    setSession(null); setActiveView('public');
   };
-
-  // Seed demo data directly to Supabase Database & Storage
-  const seedDemoDataToSupabase = async (): Promise<{ success: boolean; message: string }> => {
-    if (!isBackendConnected) {
-      return { success: false, message: 'Configurá VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY primero.' };
+  const eventPayload = (entry: Partial<EquestrianEvent>) => {
+    const payload: Record<string, unknown> = {};
+    const fields = { name: 'name', venue: 'venue', startDate: 'start_date', endDate: 'end_date', imageUrl: 'image_url', status: 'status' };
+    for (const [key, column] of Object.entries(fields)) {
+      if (key in entry) payload[column] = entry[key as keyof EquestrianEvent] ?? null;
     }
-
-    try {
-      setIsLoading(true);
-      // 1. Insert Events
-      for (const evt of INITIAL_DEMO_EVENTS) {
-        const { error: evtErr } = await supabase.from('events').upsert({
-          id: evt.id,
-          name: evt.name,
-          venue: evt.venue,
-          location: evt.city || evt.location || 'Buenos Aires',
-          start_date: evt.startDate,
-          end_date: evt.endDate,
-          image_url: evt.imageUrl || null,
-          status: evt.status,
-          updated_at: new Date().toISOString(),
-        });
-        if (evtErr) console.warn('Seed event error:', evtErr);
-      }
-
-      // 2. Upload initial documents to Storage and insert into documents table
-      const initialDocs = buildInitialDocuments();
-      for (const doc of initialDocs) {
-        let storagePath = `events/${doc.eventId}/${doc.id}.svg`;
-
-        if (doc.fileUrl && doc.fileUrl.startsWith('data:')) {
-          const blob = dataUrlToBlob(doc.fileUrl);
-          await supabase.storage.from(BUCKET_NAME).upload(storagePath, blob, {
-            contentType: 'image/svg+xml',
-            upsert: true,
-          });
-        }
-
-        const { error: docErr } = await supabase.from('documents').upsert({
-          id: doc.id,
-          event_id: doc.eventId,
-          name: doc.name,
-          type: doc.type,
-          event_date: doc.eventDate,
-          storage_path: storagePath,
-          mime_type: 'image/svg+xml',
-          sort_order: doc.order,
-          updated_at: new Date().toISOString(),
-        });
-        if (docErr) console.warn('Seed doc error:', docErr);
-      }
-
-      await refreshData();
-      return { success: true, message: '¡Datos y documentos demo sincronizados exitosamente a Supabase!' };
-    } catch (err: any) {
-      return { success: false, message: `Error al sincronizar: ${err?.message || err}` };
-    } finally {
-      setIsLoading(false);
-    }
+    if ('city' in entry || 'location' in entry) payload.location = entry.city ?? entry.location ?? '';
+    return payload;
   };
-
-  // CRUD Event: Add
-  const addEvent = async (
-    eventData: Omit<EquestrianEvent, 'id' | 'createdAt' | 'updatedAt'>
-  ): Promise<string> => {
-    const tempId = `evt-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const newEvent: EquestrianEvent = {
-      ...eventData,
-      id: tempId,
-      location: eventData.location || eventData.city || '',
-      city: eventData.city || eventData.location || '',
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    setEvents((prev) => [newEvent, ...prev]);
-
-    if (isBackendConnected) {
-      try {
-        const { data, error } = await supabase
-          .from('events')
-          .insert({
-            name: eventData.name,
-            venue: eventData.venue,
-            location: eventData.location || eventData.city || '',
-            start_date: eventData.startDate,
-            end_date: eventData.endDate,
-            image_url: eventData.imageUrl || null,
-            status: eventData.status,
-          })
-          .select('id')
-          .single();
-
-        if (error) throw error;
-        if (data?.id) {
-          const actualId = String(data.id);
-          setEvents((prev) =>
-            prev.map((e) => (e.id === tempId ? { ...e, id: actualId } : e))
-          );
-          return actualId;
-        }
-      } catch (err) {
-        console.error('Error inserting event into Supabase:', err);
-      }
-    }
-
-    return tempId;
+  const addEvent: EquestrianContextType['addEvent'] = async entry => {
+    requireAdmin();
+    const { data, error } = await supabase.from('events').insert(eventPayload(entry)).select('id').single();
+    if (error) throw error;
+    await refreshData();
+    return data.id;
   };
-
-  // CRUD Event: Update
-  const updateEvent = async (id: string, updates: Partial<EquestrianEvent>) => {
-    const now = new Date().toISOString();
-    setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, ...updates, updatedAt: now } : e))
-    );
-
-    if (isBackendConnected) {
-      try {
-        const payload: any = { updated_at: now };
-        if (updates.name !== undefined) payload.name = updates.name;
-        if (updates.venue !== undefined) payload.venue = updates.venue;
-        if (updates.location !== undefined || updates.city !== undefined)
-          payload.location = updates.location || updates.city;
-        if (updates.startDate !== undefined) payload.start_date = updates.startDate;
-        if (updates.endDate !== undefined) payload.end_date = updates.endDate;
-        if (updates.imageUrl !== undefined) payload.image_url = updates.imageUrl;
-        if (updates.status !== undefined) payload.status = updates.status;
-
-        const { error } = await supabase.from('events').update(payload).eq('id', id);
-        if (error) throw error;
-      } catch (err) {
-        console.error('Error updating event in Supabase:', err);
-      }
-    }
+  const updateEvent: EquestrianContextType['updateEvent'] = async (id, entry) => {
+    requireAdmin();
+    const { error } = await supabase.from('events').update(eventPayload(entry)).eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
   };
-
-  // CRUD Event: Delete
   const deleteEvent = async (id: string) => {
-    // Collect associated documents to clean up Storage files
-    const eventDocs = documents.filter((d) => d.eventId === id);
-
-    setEvents((prev) => prev.filter((e) => e.id !== id));
-    setDocuments((prev) => prev.filter((d) => d.eventId !== id));
+    requireAdmin();
+    const { error } = await supabase.from('events').delete().eq('id', id).select('id').single();
+    if (error) throw error;
     if (selectedEventId === id) setSelectedEventId(null);
-
-    if (isBackendConnected) {
-      try {
-        // Delete files from storage
-        const pathsToDelete: string[] = [];
-        eventDocs.forEach((d) => {
-          if (d.storagePath) pathsToDelete.push(d.storagePath);
-          if (d.documentPages && d.documentPages.length > 0) {
-            d.documentPages.forEach((p) => {
-              if (p.storagePath) pathsToDelete.push(p.storagePath);
-            });
-          }
-        });
-
-        if (pathsToDelete.length > 0) {
-          await supabase.storage.from(BUCKET_NAME).remove(pathsToDelete);
-        }
-
-        // Delete from events table (CASCADE will delete documents records in DB)
-        const { error } = await supabase.from('events').delete().eq('id', id);
-        if (error) throw error;
-      } catch (err) {
-        console.error('Error deleting event from Supabase:', err);
-      }
-    }
+    await refreshData();
   };
-
-  // CRUD Event: Toggle Status
   const toggleEventStatus = async (id: string) => {
-    const target = events.find((e) => e.id === id);
-    if (!target) return;
-    const nextStatus: EventStatus = target.status === 'published' ? 'draft' : 'published';
-    await updateEvent(id, { status: nextStatus });
+    const entry = events.find(event => event.id === id);
+    if (entry) await updateEvent(id, { status: entry.status === 'published' ? 'draft' : 'published' });
   };
 
-  // CRUD Document: Add
-  const addDocument = async (
-    docData: Omit<DocumentItem, 'id' | 'createdAt' | 'updatedAt' | 'order'>,
-    file?: File | Blob,
-    pages?: DocumentPageInput[]
-  ) => {
-    const tempId = `doc-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const existingInGroup = documents.filter(
-      (d) => d.eventId === docData.eventId && d.type === docData.type && d.eventDate === docData.eventDate
-    );
-    const maxOrder = existingInGroup.reduce((max, d) => Math.max(max, d.order || 0), 0);
-    const sortOrder = maxOrder + 1;
-
-    let storagePath = docData.storagePath || '';
-    let finalFileUrl = docData.fileUrl;
-    let structuredPages: DocumentPage[] | undefined = undefined;
-    let resolvedPageUrls: string[] | undefined = undefined;
-
-    const isPdf =
-      docData.mimeType?.toLowerCase() === 'application/pdf' ||
-      (file && 'name' in file && typeof file.name === 'string' && file.name.toLowerCase().endsWith('.pdf')) ||
-      (finalFileUrl && finalFileUrl.toLowerCase().includes('.pdf'));
-
-    // Handle Multi-Page Image Document
-    if (pages && pages.length > 0) {
-      if (isBackendConnected) {
-        try {
-          // 1. Insert master document record
-          const { data: dbDoc, error: insertError } = await supabase
-            .from('documents')
-            .insert({
-              event_id: docData.eventId,
-              name: docData.name,
-              type: docData.type,
-              event_date: docData.eventDate,
-              storage_path: null,
-              mime_type: pages[0].mimeType || docData.mimeType || 'image/jpeg',
-              sort_order: sortOrder,
-            })
-            .select('id')
-            .single();
-
-          if (insertError) throw insertError;
-          const actualDocId = dbDoc?.id ? String(dbDoc.id) : tempId;
-
-          // 2. Upload each page and insert into document_pages
-          const uploadedPages: DocumentPage[] = [];
-          for (let i = 0; i < pages.length; i++) {
-            const page = pages[i];
-            const pageNum = i + 1;
-            const ext = page.mimeType?.includes('png')
-              ? 'png'
-              : page.mimeType?.includes('webp')
-              ? 'webp'
-              : page.mimeType?.includes('svg')
-              ? 'svg'
-              : 'jpg';
-
-            const pageStoragePath = `events/${docData.eventId}/documents/${actualDocId}/page-${String(pageNum).padStart(3, '0')}.${ext}`;
-
-            let uploadBlob: Blob | null = page.file || null;
-            if (!uploadBlob && page.dataUrl?.startsWith('data:')) {
-              uploadBlob = dataUrlToBlob(page.dataUrl);
-            }
-
-            if (uploadBlob) {
-              const { error: pageUploadErr } = await supabase.storage
-                .from(BUCKET_NAME)
-                .upload(pageStoragePath, uploadBlob, {
-                  contentType: page.mimeType || 'image/jpeg',
-                  upsert: true,
-                });
-              if (pageUploadErr) console.warn('Page upload warning:', pageUploadErr);
-            }
-
-            const { data: dbPage } = await supabase
-              .from('document_pages')
-              .insert({
-                document_id: actualDocId,
-                storage_path: pageStoragePath,
-                mime_type: page.mimeType || 'image/jpeg',
-                sort_order: pageNum,
-              })
-              .select('id')
-              .single();
-
-            const pagePublicUrl = getStorageFileUrl(pageStoragePath);
-            uploadedPages.push({
-              id: dbPage?.id ? String(dbPage.id) : `page-${Date.now()}-${pageNum}`,
-              documentId: actualDocId,
-              storagePath: pageStoragePath,
-              fileUrl: pagePublicUrl,
-              mimeType: page.mimeType || 'image/jpeg',
-              sortOrder: pageNum,
-              createdAt: now,
-            });
-          }
-
-          structuredPages = uploadedPages;
-          resolvedPageUrls = uploadedPages.map((p) => p.fileUrl);
-          finalFileUrl = resolvedPageUrls[0] || '';
-          storagePath = uploadedPages[0]?.storagePath || '';
-
-          // Update main document's storage_path to page 1 for backward compatibility
-          if (storagePath) {
-            await supabase
-              .from('documents')
-              .update({ storage_path: storagePath })
-              .eq('id', actualDocId);
-          }
-
-          const newDoc: DocumentItem = {
-            ...docData,
-            id: actualDocId,
-            order: sortOrder,
-            storagePath,
-            fileUrl: finalFileUrl,
-            pages: resolvedPageUrls,
-            documentPages: structuredPages,
-            mimeType: pages[0].mimeType || 'image/jpeg',
-            createdAt: now,
-            updatedAt: now,
-          };
-
-          setDocuments((prev) => [...prev, newDoc]);
-          return;
-        } catch (err) {
-          console.error('Error adding multi-page document to Supabase:', err);
-        }
+  const uploadFile = async (eventId: string, file: File | Blob, mimeType: string) => {
+    const extension = mimeType === 'application/pdf' ? 'pdf' : mimeType.split('/')[1]?.replace(/[^a-z0-9]/g, '') || 'bin';
+    const path = 'events/' + eventId + '/' + crypto.randomUUID() + '.' + extension;
+    const { error } = await supabase.storage.from(BUCKET_NAME).upload(path, file, { contentType: mimeType, upsert: false });
+    if (error) throw error;
+    return path;
+  };
+  const saveDocument = async (entry: DocumentItem, file?: File | Blob, pages?: DocumentPageInput[]) => {
+    requireAdmin();
+    let path = entry.storagePath || entry.documentPages?.[0]?.storagePath || null;
+    let mimeType = entry.mimeType;
+    let pagePayload: { storage_path: string; mime_type: string; sort_order: number }[] | null = null;
+    if (pages?.length) {
+      pagePayload = [];
+      for (const [index, page] of pages.entries()) {
+        if (!page.file) throw new Error('Seleccioná un archivo para cada página.');
+        const storagePath = await uploadFile(entry.eventId, page.file, page.mimeType);
+        pagePayload.push({ storage_path: storagePath, mime_type: page.mimeType, sort_order: index + 1 });
       }
-
-      // Fallback local multi-page
-      const localPages: DocumentPage[] = pages.map((p, idx) => ({
-        id: `page-${Date.now()}-${idx + 1}`,
-        documentId: tempId,
-        storagePath: `local/${tempId}/page-${idx + 1}`,
-        fileUrl: p.dataUrl,
-        mimeType: p.mimeType,
-        sortOrder: idx + 1,
-        createdAt: now,
-      }));
-
-      const newLocalDoc: DocumentItem = {
-        ...docData,
-        id: tempId,
-        order: sortOrder,
-        storagePath: '',
-        fileUrl: localPages[0]?.fileUrl || finalFileUrl,
-        pages: localPages.map((p) => p.fileUrl),
-        documentPages: localPages,
-        mimeType: pages[0].mimeType || 'image/jpeg',
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      setDocuments((prev) => [...prev, newLocalDoc]);
+      path = pagePayload[0].storage_path; mimeType = pagePayload[0].mime_type;
+    } else if (file) {
+      mimeType = file.type || entry.mimeType;
+      path = await uploadFile(entry.eventId, file, mimeType);
+      pagePayload = [];
+    }
+    if (!path) throw new Error('Seleccioná un archivo.');
+    const { error } = await supabase.rpc('equidate_save_document', {
+      payload: { id: entry.id, event_id: entry.eventId, name: entry.name,
+        type: entry.type, event_date: entry.eventDate, class_id: entry.classId || null,
+        storage_path: path, mime_type: mimeType, sort_order: entry.order },
+      page_payload: pagePayload,
+    });
+    if (error) throw error;
+    await refreshData();
+  };
+  const addDocument: EquestrianContextType['addDocument'] = async (entry, file, pages) => {
+    const order = Math.max(0, ...documents.filter(doc => doc.eventId === entry.eventId).map(doc => doc.order)) + 1;
+    await saveDocument({ ...entry, id: crypto.randomUUID(), order, createdAt: '', updatedAt: '' }, file, pages);
+  };
+  const updateDocument: EquestrianContextType['updateDocument'] = async (id, updates, file, pages) => {
+    requireAdmin();
+    const entry = documents.find(doc => doc.id === id);
+    if (!entry) throw new Error('Documento no encontrado.');
+    if (file || pages) {
+      await saveDocument({ ...entry, ...updates }, file, pages);
       return;
     }
-
-    // Single File flow (PDF or single image)
-    if (isBackendConnected) {
-      try {
-        const cleanName = docData.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-        const extension = isPdf ? 'pdf' : docData.mimeType?.includes('svg') ? 'svg' : 'png';
-        storagePath = `events/${docData.eventId}/${Date.now()}_${cleanName}.${extension}`;
-
-        let uploadBlob: Blob | null = file || null;
-        if (!uploadBlob && docData.fileUrl?.startsWith('data:')) {
-          uploadBlob = dataUrlToBlob(docData.fileUrl);
-        }
-
-        if (uploadBlob) {
-          const { error: uploadError } = await supabase.storage
-            .from(BUCKET_NAME)
-            .upload(storagePath, uploadBlob, {
-              contentType: docData.mimeType || (isPdf ? 'application/pdf' : 'image/png'),
-              upsert: true,
-            });
-
-          if (uploadError) throw uploadError;
-          finalFileUrl = getStorageFileUrl(storagePath);
-        }
-
-        const { data: dbDoc, error: insertError } = await supabase
-          .from('documents')
-          .insert({
-            event_id: docData.eventId,
-            name: docData.name,
-            type: docData.type,
-            event_date: docData.eventDate,
-            storage_path: storagePath,
-            mime_type: docData.mimeType || (isPdf ? 'application/pdf' : 'image/png'),
-            sort_order: sortOrder,
-          })
-          .select('id')
-          .single();
-
-        if (insertError) throw insertError;
-
-        const newDoc: DocumentItem = {
-          ...docData,
-          id: dbDoc?.id ? String(dbDoc.id) : tempId,
-          order: sortOrder,
-          storagePath,
-          fileUrl: finalFileUrl,
-          pages: isPdf ? undefined : [finalFileUrl],
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        setDocuments((prev) => [...prev, newDoc]);
-        return;
-      } catch (err) {
-        console.error('Error adding single document to Supabase:', err);
-      }
+    const payload: Record<string, unknown> = {};
+    const fields = { name: 'name', type: 'type', eventDate: 'event_date', classId: 'class_id', order: 'sort_order' };
+    for (const [key, column] of Object.entries(fields)) {
+      if (key in updates) payload[column] = updates[key as keyof DocumentItem] ?? null;
     }
-
-    // Fallback local update
-    const fallbackDoc: DocumentItem = {
-      ...docData,
-      id: tempId,
-      order: sortOrder,
-      storagePath,
-      fileUrl: finalFileUrl,
-      pages: isPdf ? undefined : [finalFileUrl],
-      createdAt: now,
-      updatedAt: now,
-    };
-    setDocuments((prev) => [...prev, fallbackDoc]);
+    const { error } = await supabase.from('documents').update(payload).eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
   };
-
-  // CRUD Document: Update
-  const updateDocument = async (
-    id: string,
-    updates: Partial<DocumentItem>,
-    newFile?: File | Blob,
-    newPages?: DocumentPageInput[]
-  ) => {
-    const now = new Date().toISOString();
-    let updatedStoragePath = updates.storagePath;
-    let updatedFileUrl = updates.fileUrl;
-    let updatedPages = updates.pages;
-    let updatedDocPages = updates.documentPages;
-
-    const target = documents.find((d) => d.id === id);
-
-    // If newPages provided for multi-page document
-    if (newPages && newPages.length > 0 && target) {
-      if (isBackendConnected) {
-        try {
-          // Remove old document_pages records
-          await supabase.from('document_pages').delete().eq('document_id', id);
-
-          const uploadedPages: DocumentPage[] = [];
-          for (let i = 0; i < newPages.length; i++) {
-            const page = newPages[i];
-            const pageNum = i + 1;
-            const ext = page.mimeType?.includes('png')
-              ? 'png'
-              : page.mimeType?.includes('webp')
-              ? 'webp'
-              : page.mimeType?.includes('svg')
-              ? 'svg'
-              : 'jpg';
-
-            const pageStoragePath = `events/${target.eventId}/documents/${id}/page-${String(pageNum).padStart(3, '0')}.${ext}`;
-
-            let uploadBlob: Blob | null = page.file || null;
-            if (!uploadBlob && page.dataUrl?.startsWith('data:')) {
-              uploadBlob = dataUrlToBlob(page.dataUrl);
-            }
-
-            if (uploadBlob) {
-              await supabase.storage.from(BUCKET_NAME).upload(pageStoragePath, uploadBlob, {
-                contentType: page.mimeType || 'image/jpeg',
-                upsert: true,
-              });
-            }
-
-            const { data: dbPage } = await supabase
-              .from('document_pages')
-              .insert({
-                document_id: id,
-                storage_path: pageStoragePath,
-                mime_type: page.mimeType || 'image/jpeg',
-                sort_order: pageNum,
-              })
-              .select('id')
-              .single();
-
-            const pagePublicUrl = getStorageFileUrl(pageStoragePath);
-            uploadedPages.push({
-              id: dbPage?.id ? String(dbPage.id) : `page-${Date.now()}-${pageNum}`,
-              documentId: id,
-              storagePath: pageStoragePath,
-              fileUrl: pagePublicUrl,
-              mimeType: page.mimeType || 'image/jpeg',
-              sortOrder: pageNum,
-              createdAt: now,
-            });
-          }
-
-          updatedDocPages = uploadedPages;
-          updatedPages = uploadedPages.map((p) => p.fileUrl);
-          updatedFileUrl = updatedPages[0];
-          updatedStoragePath = uploadedPages[0]?.storagePath;
-        } catch (err) {
-          console.error('Error updating document pages in Supabase:', err);
-        }
-      } else {
-        const localPages: DocumentPage[] = newPages.map((p, idx) => ({
-          id: `page-${Date.now()}-${idx + 1}`,
-          documentId: id,
-          storagePath: '',
-          fileUrl: p.dataUrl,
-          mimeType: p.mimeType,
-          sortOrder: idx + 1,
-          createdAt: now,
-        }));
-        updatedDocPages = localPages;
-        updatedPages = localPages.map((p) => p.fileUrl);
-        updatedFileUrl = updatedPages[0];
-      }
-    } else if (isBackendConnected && newFile && target) {
-      try {
-        const extension = newFile.type?.includes('pdf') ? 'pdf' : 'png';
-        updatedStoragePath = `events/${target.eventId}/${Date.now()}_updated.${extension}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(updatedStoragePath, newFile, {
-            contentType: newFile.type,
-            upsert: true,
-          });
-
-        if (!uploadError) {
-          updatedFileUrl = getStorageFileUrl(updatedStoragePath);
-          updatedPages = [updatedFileUrl];
-        }
-      } catch (err) {
-        console.warn('Storage upload error during document update:', err);
-      }
-    }
-
-    setDocuments((prev) =>
-      prev.map((d) => {
-        if (d.id === id) {
-          return {
-            ...d,
-            ...updates,
-            storagePath: updatedStoragePath || d.storagePath,
-            fileUrl: updatedFileUrl || d.fileUrl,
-            pages: updatedPages !== undefined ? updatedPages : d.pages,
-            documentPages: updatedDocPages !== undefined ? updatedDocPages : d.documentPages,
-            updatedAt: now,
-          };
-        }
-        return d;
-      })
-    );
-
-    if (isBackendConnected) {
-      try {
-        const payload: any = { updated_at: now };
-        if (updates.name !== undefined) payload.name = updates.name;
-        if (updates.type !== undefined) payload.type = updates.type;
-        if (updates.eventDate !== undefined) payload.event_date = updates.eventDate;
-        if (updates.order !== undefined) payload.sort_order = updates.order;
-        if (updatedStoragePath) payload.storage_path = updatedStoragePath;
-        if (updates.mimeType) payload.mime_type = updates.mimeType;
-
-        await supabase.from('documents').update(payload).eq('id', id);
-      } catch (err) {
-        console.error('Error updating document in Supabase:', err);
-      }
-    }
-  };
-
-  // CRUD Document: Delete
   const deleteDocument = async (id: string) => {
-    const target = documents.find((d) => d.id === id);
-    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    requireAdmin();
+    const { error } = await supabase.from('documents').delete().eq('id', id).select('id').single();
+    if (error) throw error;
     if (activeViewerDoc?.id === id) setActiveViewerDoc(null);
     if (viewingDocumentId === id) setViewingDocumentId(null);
-
-    if (isBackendConnected && target) {
-      try {
-        const pathsToDelete: string[] = [];
-        if (target.storagePath) {
-          pathsToDelete.push(target.storagePath);
-        }
-        if (target.documentPages && target.documentPages.length > 0) {
-          target.documentPages.forEach((p) => {
-            if (p.storagePath) pathsToDelete.push(p.storagePath);
-          });
-        }
-        if (pathsToDelete.length > 0) {
-          await supabase.storage.from(BUCKET_NAME).remove(pathsToDelete);
-        }
-        // DB cascade deletes from document_pages when deleting from documents
-        await supabase.from('documents').delete().eq('id', id);
-      } catch (err) {
-        console.error('Error deleting document from Supabase:', err);
-      }
-    }
+    await refreshData();
   };
-
-  // Reorder Document
-  const reorderDocument = async (id: string, direction: 'up' | 'down') => {
-    const targetDoc = documents.find((d) => d.id === id);
-    if (!targetDoc) return;
-
-    const siblings = documents
-      .filter(
-        (d) =>
-          d.eventId === targetDoc.eventId &&
-          d.type === targetDoc.type &&
-          d.eventDate === targetDoc.eventDate
-      )
-      .sort((a, b) => a.order - b.order);
-
-    const idx = siblings.findIndex((d) => d.id === id);
-    if (idx < 0) return;
-    if (direction === 'up' && idx === 0) return;
-    if (direction === 'down' && idx === siblings.length - 1) return;
-
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    const currentOrder = siblings[idx].order;
-    const swapOrder = siblings[swapIdx].order;
-
-    setDocuments((prev) =>
-      prev.map((d) => {
-        if (d.id === siblings[idx].id) return { ...d, order: swapOrder };
-        if (d.id === siblings[swapIdx].id) return { ...d, order: currentOrder };
-        return d;
-      })
-    );
-
-    if (isBackendConnected) {
-      try {
-        await supabase
-          .from('documents')
-          .update({ sort_order: swapOrder })
-          .eq('id', siblings[idx].id);
-
-        await supabase
-          .from('documents')
-          .update({ sort_order: currentOrder })
-          .eq('id', siblings[swapIdx].id);
-      } catch (err) {
-        console.warn('Error saving document reorder to Supabase:', err);
-      }
-    }
+  const reorderDocument: EquestrianContextType['reorderDocument'] = async (id, direction) => {
+    requireAdmin();
+    const target = documents.find(doc => doc.id === id);
+    if (!target) return;
+    const siblings = documents.filter(doc => doc.eventId === target.eventId && doc.type === target.type && doc.eventDate === target.eventDate).sort((first, second) => first.order - second.order);
+    const index = siblings.findIndex(doc => doc.id === id);
+    const other = siblings[index + (direction === 'up' ? -1 : 1)];
+    if (!other) return;
+    const { error } = await supabase.rpc('equidate_swap_documents', { first_id: id, second_id: other.id });
+    if (error) throw error;
+    await refreshData();
   };
-
-  const getDocumentsForEvent = (eventId: string) => {
-    return documents
-      .filter((d) => String(d.eventId) === String(eventId))
-      .sort((a, b) => a.order - b.order);
+  const saveDay: EquestrianContextType['saveDay'] = async day => {
+    requireAdmin();
+    if (day.youtubeUrl && !getYouTubeId(day.youtubeUrl)) throw new Error('Ingresá una URL válida de un video de YouTube.');
+    const { error } = await supabase.from('competition_days').upsert({
+      event_id: day.eventId, event_date: day.date, youtube_url: day.youtubeUrl || null, time_zone: day.timeZone,
+    }, { onConflict: 'event_id,event_date' }).select('id').single();
+    if (error) throw error;
+    await refreshData();
   };
-
-  const getEventById = (id: string) => {
-    return events.find((e) => String(e.id) === String(id));
+  const saveClass: EquestrianContextType['saveClass'] = async entry => {
+    requireAdmin();
+    const payload = { day_id: entry.dayId, event_id: entry.eventId, event_date: entry.date,
+      start_time: entry.time || null, number: entry.number.trim(), name: entry.name.trim(),
+      description: entry.description.trim(), sort_order: entry.order };
+    const response = entry.id
+      ? await supabase.from('competition_classes').update(payload).eq('id', entry.id).select('id').single()
+      : await supabase.from('competition_classes').insert(payload).select('id').single();
+    if (response.error) throw response.error;
+    await refreshData();
   };
-
-  const getDocumentById = (id: string) => {
-    return documents.find((d) => String(d.id) === String(id));
+  const deleteClass = async (id: string) => {
+    requireAdmin();
+    const { error } = await supabase.from('competition_classes').delete().eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
   };
-
-  const resetToDemoData = () => {
-    setEvents(INITIAL_DEMO_EVENTS);
-    setDocuments(buildInitialDocuments());
-    setActiveYear(2026);
-    setSelectedMonth(9);
-    setSelectedEventId(null);
-    setActiveViewerDoc(null);
-    setViewingDocumentId(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY_EVENTS);
-      localStorage.removeItem(STORAGE_KEY_DOCS);
-    } catch {}
-  };
-
-  return (
-    <EquestrianContext.Provider
-      value={{
-        events,
-        documents,
-        activeYear,
-        setActiveYear,
-        selectedMonth,
-        setSelectedMonth,
-        selectedEventId,
-        setSelectedEventId,
-        activeView,
-        setActiveView,
-        session,
-        isAdmin,
-        loginAdmin,
-        logoutAdmin,
-        isLoading,
-        isBackendConnected,
-        refreshData,
-        seedDemoDataToSupabase,
-        activeViewerDoc,
-        setActiveViewerDoc,
-        viewingDocumentId,
-        setViewingDocumentId,
-        addEvent,
-        updateEvent,
-        deleteEvent,
-        toggleEventStatus,
-        addDocument,
-        updateDocument,
-        deleteDocument,
-        reorderDocument,
-        getDocumentsForEvent,
-        getEventById,
-        getDocumentById,
-        resetToDemoData,
-      }}
-    >
-      {children}
-    </EquestrianContext.Provider>
-  );
+  return <EquestrianContext.Provider value={{
+    events, documents, days, classes, dataError, scheduleError, saveDay, saveClass, deleteClass,
+    activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
+    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading,
+    isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
+    setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus,
+    addDocument, updateDocument, deleteDocument, reorderDocument,
+    getDocumentsForEvent: id => documents.filter(doc => doc.eventId === id).sort((first, second) => first.order - second.order),
+    getEventById: id => events.find(event => event.id === id),
+    getDocumentById: id => documents.find(doc => doc.id === id),
+  }}>{children}</EquestrianContext.Provider>;
 };
-
 export const useEquestrian = () => {
   const context = useContext(EquestrianContext);
-  if (!context) {
-    throw new Error('useEquestrian must be used within an EquestrianProvider');
-  }
+  if (!context) throw new Error('EquestrianProvider no disponible.');
   return context;
 };

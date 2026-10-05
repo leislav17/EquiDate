@@ -2,6 +2,9 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  NODE_VERSION = "24"
+
 # Single Page App routing: redirect all routes to /index.html
 [[redirects]]
   from = "/*"

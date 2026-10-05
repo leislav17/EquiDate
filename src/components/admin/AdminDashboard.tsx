@@ -3,6 +3,7 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import { formatDateRange } from '../../utils/dateUtils';
 import { EquestrianEvent } from '../../types/equestrian';
 import { CompetitionFormModal } from './CompetitionFormModal';
+import { ScheduleManager } from './ScheduleManager';
 import { DocumentManagerModal } from './DocumentManagerModal';
 import {
   Plus,
@@ -31,16 +32,13 @@ export const AdminDashboard: React.FC = () => {
     logoutAdmin,
     isBackendConnected,
     isLoading,
-    refreshData,
-    seedDemoDataToSupabase
+    refreshData
   } = useEquestrian();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EquestrianEvent | null>(null);
   const [docManagerEvent, setDocManagerEvent] = useState<EquestrianEvent | null>(null);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-
+  const [scheduleEvent, setScheduleEvent] = useState<EquestrianEvent | null>(null);
   const handleOpenCreate = () => {
     setEditingEvent(null);
     setIsFormOpen(true);
@@ -51,7 +49,7 @@ export const AdminDashboard: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleSaveEvent = (data: {
+  const handleSaveEvent = async (data: {
     name: string;
     venue: string;
     startDate: string;
@@ -59,9 +57,9 @@ export const AdminDashboard: React.FC = () => {
     status: 'published' | 'draft';
   }) => {
     if (editingEvent) {
-      updateEvent(editingEvent.id, data);
+      await updateEvent(editingEvent.id, data);
     } else {
-      addEvent(data);
+      await addEvent(data);
     }
   };
 
@@ -70,16 +68,7 @@ export const AdminDashboard: React.FC = () => {
     setActiveView('public');
   };
 
-  const handleSeedSupabase = async () => {
-    if (!window.confirm('¿Deseás subir y sincronizar todos los concursos y documentos iniciales a tu base de datos y Storage de Supabase?')) {
-      return;
-    }
-    setIsSyncing(true);
-    setSyncStatus(null);
-    const res = await seedDemoDataToSupabase();
-    setIsSyncing(false);
-    setSyncStatus(res.message);
-  };
+  const runAction = (action: Promise<unknown>) => { void action.catch(error => window.alert(error.message || 'No se pudo guardar.')); };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -98,7 +87,7 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               <span className={`w-1.5 h-1.5 rounded-full ${isBackendConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              {isBackendConnected ? 'Supabase Conectado' : 'Modo Demo / Local'}
+              {isBackendConnected ? 'Supabase configurado' : 'Sin conexión'}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-neutral-500 mt-1">
@@ -107,22 +96,11 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isBackendConnected && (
-            <button
-              type="button"
-              onClick={handleSeedSupabase}
-              disabled={isSyncing || isLoading}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-[#123E59] border border-blue-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-              title="Subir concursos y documentos iniciales a Supabase"
-            >
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar a Supabase'}</span>
-            </button>
-          )}
 
           {session && (
             <button
               type="button"
-              onClick={logoutAdmin}
+              onClick={() => runAction(logoutAdmin())}
               className="px-3 py-2 text-xs font-bold text-neutral-600 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors cursor-pointer"
             >
               Cerrar Sesión
@@ -140,19 +118,8 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {syncStatus && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs font-medium text-blue-900 flex items-center justify-between">
-          <span>{syncStatus}</span>
-          <button
-            type="button"
-            onClick={() => setSyncStatus(null)}
-            className="text-blue-700 hover:text-blue-900 font-bold ml-2 cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
+      {scheduleEvent && <ScheduleManager event={scheduleEvent} onClose={() => setScheduleEvent(null)} />}
       {/* List of competitions */}
       <div className="space-y-3">
         {events.length === 0 ? (
@@ -230,6 +197,7 @@ export const AdminDashboard: React.FC = () => {
                   </button>
 
                   {/* Manage Documents */}
+                  <button type="button" onClick={() => setScheduleEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Pruebas y transmisión</button>
                   <button
                     type="button"
                     onClick={() => setDocManagerEvent(evt)}
@@ -243,7 +211,7 @@ export const AdminDashboard: React.FC = () => {
                   {/* Publish/Unpublish toggle */}
                   <button
                     type="button"
-                    onClick={() => toggleEventStatus(evt.id)}
+                    onClick={() => runAction(toggleEventStatus(evt.id))}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
                       isPublished
                         ? 'text-neutral-700 border-neutral-300 hover:bg-neutral-100'
@@ -283,7 +251,7 @@ export const AdminDashboard: React.FC = () => {
                           `¿Eliminar el concurso "${evt.name}" y todos sus documentos?`
                         )
                       ) {
-                        deleteEvent(evt.id);
+                        runAction(deleteEvent(evt.id));
                       }
                     }}
                     className="p-2 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"

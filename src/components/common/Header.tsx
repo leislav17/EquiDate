@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { RotateCcw, Settings, ArrowLeft, Shield } from 'lucide-react';
+import { Settings, ArrowLeft, Shield } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { activeView, setActiveView, setSelectedEventId, resetToDemoData } = useEquestrian();
+  const { activeView, setActiveView, setSelectedEventId } = useEquestrian();
   const [showAdminMenu, setShowAdminMenu] = useState(false);
 
   return (
@@ -14,6 +14,7 @@ export const Header: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              window.location.hash = '';
               setSelectedEventId(null);
               setActiveView('public');
             }}
@@ -76,6 +77,7 @@ export const Header: React.FC = () => {
                       type="button"
                       onClick={() => {
                         setShowAdminMenu(false);
+                        window.location.hash = '';
                         setActiveView('admin');
                         setSelectedEventId(null);
                       }}
@@ -83,18 +85,6 @@ export const Header: React.FC = () => {
                     >
                       <Shield className="w-4 h-4 text-[#123E59]" />
                       <span>Panel de Administración</span>
-                    </button>
-                    <div className="h-px bg-neutral-100 my-1" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAdminMenu(false);
-                        resetToDemoData();
-                      }}
-                      className="w-full px-3.5 py-2 text-left font-medium text-neutral-600 hover:bg-neutral-50 flex items-center gap-2 cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
-                      <span>Reiniciar Datos Demo</span>
                     </button>
                   </div>
                 </>

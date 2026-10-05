@@ -1,58 +1,44 @@
-# Salto Ecuestre — Plataforma de Concursos de Salto
+# EquiDate
 
-Plataforma centralizada y mobile-first para consultar concursos de salto ecuestre, anteprogramas oficiales, órdenes de ingreso y resultados integrados con backend en **Supabase** y preparada para desplegar en **Netlify**.
+Calendario mobile-first de concursos hípicos con Supabase como fuente de verdad.
+Incluye anteprogramas, pruebas por jornada, listados, resultados y transmisiones de YouTube.
 
----
+## Desarrollo
 
-## 1. Configuración de Supabase
+Requiere Node 24.
 
-### Paso A: Crear Proyecto en Supabase
-1. Ingresá a [supabase.com](https://supabase.com) y creá un nuevo proyecto.
-2. Anotá la **Project URL** y la **Anon / Public Key** (disponibles en *Project Settings* → *API*).
-
-### Paso B: Ejecutar el Esquema SQL
-1. En el panel de Supabase, andá a **SQL Editor**.
-2. Si es una instalación nueva, ejecutá el archivo completo `supabase/schema.sql`.
-3. Si ya tenías las tablas `events` y `documents` creadas, ejecutá el script de migración `supabase/migrations/20261004_document_pages.sql`.
-4. Esto creará:
-   - Tabla `public.events` (concursos)
-   - Tabla `public.documents` (documentos principales)
-   - Tabla `public.document_pages` (páginas de documentos multipágina con `CASCADE DELETE`)
-   - Bucket de almacenamiento `event-documents` (público)
-   - Reglas de seguridad **Row Level Security (RLS)** para lectura pública de publicados y edición exclusiva por administradores autenticados.
-
-### Paso C: Crear Usuario Administrador
-1. En Supabase, andá a **Authentication** → **Users**.
-2. Hacé clic en **Add User** → **Create User**.
-3. Ingresá el correo electrónico y la contraseña del administrador.
-4. Con estas credenciales podrás iniciar sesión en la pantalla de **Administración** de la aplicación.
-
----
-
-## 2. Variables de Entorno
-
-Creá un archivo `.env` en la raíz de tu proyecto local con:
-
-```bash
-VITE_SUPABASE_URL="https://tu-proyecto.supabase.co"
-VITE_SUPABASE_ANON_KEY="tu-anon-public-key"
+```sh
+npm ci
+npm run dev
 ```
 
----
+Configurar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en `.env` o Netlify.
+Sin configuración o ante errores se muestra un estado explícito; no se cargan datos de muestra ni se habilita administración local.
+No se leen ni escriben concursos/documentos en localStorage. Supabase Auth conserva su almacenamiento de sesión habitual.
 
-## 3. Despliegue en Netlify
+## Base de datos y actualización
 
-1. Creá un nuevo sitio en [Netlify](https://app.netlify.com) conectando tu repositorio de Git.
-2. Configuraciones de Build (detectadas automáticamente vía `netlify.toml`):
-   - **Build command:** `npm run build`
-   - **Publish directory:** `dist`
-3. En **Site configuration** → **Environment variables**, agregá:
-   - `VITE_SUPABASE_URL`: La URL de tu proyecto en Supabase.
-   - `VITE_SUPABASE_ANON_KEY`: La clave anónima pública de tu proyecto en Supabase.
-4. Hacé clic en **Deploy Site**.
+Para una base existente, seguir [la guía de actualización](docs/ACTUALIZACION_SUPABASE.md).
+No volver a ejecutar `schema.sql` sobre una base existente.
 
----
+Para una instalación vacía: ejecutar `supabase/schema.sql` y después `supabase/migrations/20261005_competition_schedule.sql`.
+El esquema base ya incluye `document_pages`; no repetir la migración antigua de páginas.
+Crear una cuenta en Supabase Auth y habilitar `equidate_admin` en app_metadata según la guía antes de iniciar sesión.
 
-## 4. Carga Inicial de Datos (Seed Demo)
+## Validación
 
-Cuando ingreses al panel de **Administración** con tu usuario administrador autenticado, dispondrás de un botón **"Sincronizar Datos Demo a Supabase"**. Al pulsarlo se cargarán automáticamente los concursos y documentos iniciales de octubre 2026 directamente en tu base de datos y Storage de Supabase.
+```sh
+npm test
+npm run lint
+npm run build
+```
+
+La instalación reproducible usa `package-lock.json`.
+Los tests SQL se ejecutan en PostgreSQL embebido y no necesitan credenciales ni acceden al proyecto real.
+
+## Netlify
+
+Build: `npm run build`. Carpeta publicada: `dist`. Node: 24.
+Definir las dos variables públicas de Supabase antes de compilar; nunca usar service_role en el frontend.
+Aplicar primero la migración y configurar el permiso de la administradora.
+La aplicación usa rutas hash para documentos y transmisiones y conserva el branding EquiDate.

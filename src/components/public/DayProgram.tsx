@@ -2,17 +2,19 @@ import React from 'react';
 import { Bell, Award } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { sortClasses } from '../../utils/schedule';
+import { documentTypeLabel } from '../../utils/documents';
 import { DocumentItem } from '../../types/equestrian';
 
-export function DayProgram({ eventId, date }: { eventId: string; date: string }) {
-  const { classes, documents, setViewingDocumentId } = useEquestrian();
-  const entries = sortClasses(classes.filter(entry => entry.eventId === eventId && entry.date === date));
+export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: string; arenaId?: string }) {
+  const { classes, arenas, documents, setViewingDocumentId } = useEquestrian();
+  const entries = sortClasses(classes.filter(entry => entry.eventId === eventId && entry.date === date && (!arenaId || entry.arenaId === arenaId)));
   const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && doc.type !== 'PROGRAM');
-  const unassigned = dayDocuments.filter(doc => !entries.some(entry => entry.id === doc.classId));
-  const action = (doc: DocumentItem) => <button key={doc.id} onClick={() => setViewingDocumentId(doc.id)}
+  const unassigned = arenaId ? [] : dayDocuments.filter(doc => !doc.classId);
+  const eventArenas = arenas.filter(arena => arena.eventId === eventId);
+  const action = (doc: DocumentItem) => <button key={doc.id} title={doc.name} onClick={() => setViewingDocumentId(doc.id)}
     className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left">
     {doc.type === 'RESULT' ? <Award className="w-4 h-4 shrink-0" /> : <Bell className="w-4 h-4 shrink-0" />}
-    <span>{doc.type === 'RESULT' ? 'Resultados' : 'Listado'} · {doc.name}</span>
+    <span>{documentTypeLabel(doc.type)}</span>
   </button>;
   return <div className="space-y-3">
     {entries.length === 0 && <p className="text-sm text-neutral-500 py-3">Pruebas aún no publicadas.</p>}
@@ -24,6 +26,7 @@ export function DayProgram({ eventId, date }: { eventId: string; date: string })
           <div className="min-w-0">
             <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D]">Prueba {entry.number}</p>
             <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
+            {eventArenas.length > 1 && <p className="text-xs font-semibold text-[#123E59] mt-1">{eventArenas.find(arena => arena.id === entry.arenaId)?.name || 'Pista por confirmar'}</p>}
             {entry.description && <p className="text-sm text-neutral-500 mt-1">{entry.description}</p>}
           </div>
         </div>

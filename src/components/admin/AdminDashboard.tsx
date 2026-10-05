@@ -3,7 +3,7 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import { formatDateRange } from '../../utils/dateUtils';
 import { EquestrianEvent } from '../../types/equestrian';
 import { CompetitionFormModal } from './CompetitionFormModal';
-import { ScheduleManager } from './ScheduleManager';
+import { TestsManager, TransmissionManager } from './ScheduleManager';
 import { DocumentManagerModal } from './DocumentManagerModal';
 import {
   Plus,
@@ -38,6 +38,7 @@ export const AdminDashboard: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EquestrianEvent | null>(null);
   const [docManagerEvent, setDocManagerEvent] = useState<EquestrianEvent | null>(null);
+  const [transmissionEvent, setTransmissionEvent] = useState<EquestrianEvent | null>(null);
   const [scheduleEvent, setScheduleEvent] = useState<EquestrianEvent | null>(null);
   const handleOpenCreate = () => {
     setEditingEvent(null);
@@ -119,7 +120,8 @@ export const AdminDashboard: React.FC = () => {
       </div>
 
 
-      {scheduleEvent && <ScheduleManager event={scheduleEvent} onClose={() => setScheduleEvent(null)} />}
+      {scheduleEvent && <TestsManager event={scheduleEvent} onClose={() => setScheduleEvent(null)} />}
+      {transmissionEvent && <TransmissionManager event={transmissionEvent} onClose={() => setTransmissionEvent(null)} />}
       {/* List of competitions */}
       <div className="space-y-3">
         {events.length === 0 ? (
@@ -197,7 +199,8 @@ export const AdminDashboard: React.FC = () => {
                   </button>
 
                   {/* Manage Documents */}
-                  <button type="button" onClick={() => setScheduleEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Pruebas y transmisión</button>
+                  <button type="button" onClick={() => setScheduleEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Pruebas</button>
+                  <button type="button" onClick={() => setTransmissionEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Transmisión</button>
                   <button
                     type="button"
                     onClick={() => setDocManagerEvent(evt)}

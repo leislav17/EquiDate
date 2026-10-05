@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass } from '../types/equestrian';
+import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass, CompetitionArena, CompetitionStream } from '../types/equestrian';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import { getYouTubeId } from '../utils/schedule';
+import { documentAssociation, documentLabel } from '../utils/documents';
+import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -14,10 +15,15 @@ export interface DocumentPageInput {
 interface EquestrianContextType {
   events: EquestrianEvent[];
   days: CompetitionDay[];
+  arenas: CompetitionArena[];
+  streams: CompetitionStream[];
+  arenaError: string | null;
+  saveArena: (eventId: string, name: string, id?: string) => Promise<void>;
+  deleteArena: (id: string) => Promise<void>;
+  saveStream: (eventId: string, date: string, arenaId: string, url: string, timeZone: string) => Promise<void>;
   classes: CompetitionClass[];
   dataError: string | null;
   scheduleError: string | null;
-  saveDay: (day: Omit<CompetitionDay, 'id'>) => Promise<void>;
   saveClass: (entry: Omit<CompetitionClass, 'id'> & { id?: string }) => Promise<void>;
   deleteClass: (id: string) => Promise<void>;
   documents: DocumentItem[];
@@ -81,6 +87,9 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [events, setEvents] = useState<EquestrianEvent[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [arenas, setArenas] = useState<CompetitionArena[]>([]);
+  const [streams, setStreams] = useState<CompetitionStream[]>([]);
+  const [arenaError, setArenaError] = useState<string | null>(null);
   const [days, setDays] = useState<CompetitionDay[]>([]);
   const [classes, setClasses] = useState<CompetitionClass[]>([]);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -123,7 +132,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       requestVersion.current += 1;
-      setEvents([]); setDocuments([]); setDays([]); setClasses([]);
+      setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
       setSession(currentSession);
       setAuthRevision(version => version + 1);
     });
@@ -136,7 +145,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(false);
       return;
     }
-    setIsLoading(true); setDataError(null); setScheduleError(null);
+    setIsLoading(true); setDataError(null); setScheduleError(null); setArenaError(null);
     try {
       const [eventResponse, documentResponse, pageResponse] = await Promise.all([
         supabase.from('events').select('*').order('start_date'),
@@ -239,14 +248,31 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           youtubeUrl: day.youtube_url || '', timeZone: day.time_zone,
         })));
         setClasses((classResponse.data || []).map(entry => ({
-          id: entry.id, dayId: entry.day_id, eventId: entry.event_id,
+          id: entry.id, dayId: entry.day_id, eventId: entry.event_id, arenaId: entry.arena_id || '',
           date: entry.event_date, time: entry.start_time?.slice(0, 5) || '',
           number: entry.number, name: entry.name, description: entry.description || '', order: entry.sort_order,
         })));
       }
+      const [arenaResponse, streamResponse] = await Promise.all([
+        supabase.from('competition_arenas').select('*').order('is_primary', { ascending: false }).order('name'),
+        supabase.from('competition_streams').select('*'),
+      ]);
+      if (version !== requestVersion.current) return;
+      if (arenaResponse.error || streamResponse.error) {
+        setArenas([]); setStreams([]);
+        setArenaError('La gestión de pistas y transmisiones no está disponible. Revisá la migración de pistas.');
+      } else {
+        setArenas((arenaResponse.data || []).map(arena => ({
+          id: arena.id, eventId: arena.event_id, name: arena.name, isPrimary: arena.is_primary,
+        })));
+        setStreams((streamResponse.data || []).map(stream => ({
+          id: stream.id, eventId: stream.event_id, dayId: stream.day_id,
+          arenaId: stream.arena_id, youtubeUrl: stream.youtube_url || '',
+        })));
+      }
     } catch (error) {
       if (version !== requestVersion.current) return;
-      setEvents([]); setDocuments([]); setDays([]); setClasses([]);
+      setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
       setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
     } finally {
       if (version === requestVersion.current) setIsLoading(false);
@@ -317,6 +343,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
   const saveDocument = async (entry: DocumentItem, file?: File | Blob, pages?: DocumentPageInput[]) => {
     requireAdmin();
+    const association = documentAssociation(entry.type, entry.classId, entry.eventId, classes);
+    entry = { ...entry, ...association, name: documentLabel({ ...entry, ...association }, classes) };
     let path = entry.storagePath || entry.documentPages?.[0]?.storagePath || null;
     let mimeType = entry.mimeType;
     let pagePayload: { storage_path: string; mime_type: string; sort_order: number }[] | null = null;
@@ -356,7 +384,11 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
     const payload: Record<string, unknown> = {};
-    const fields = { name: 'name', type: 'type', eventDate: 'event_date', classId: 'class_id', order: 'sort_order' };
+    if ('type' in updates || 'classId' in updates || 'eventDate' in updates) {
+      const merged = { ...entry, ...updates };
+      updates = { ...updates, ...documentAssociation(merged.type, merged.classId, entry.eventId, classes) };
+    }
+    const fields = { type: 'type', eventDate: 'event_date', classId: 'class_id', order: 'sort_order' };
     for (const [key, column] of Object.entries(fields)) {
       if (key in updates) payload[column] = updates[key as keyof DocumentItem] ?? null;
     }
@@ -384,18 +416,13 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (error) throw error;
     await refreshData();
   };
-  const saveDay: EquestrianContextType['saveDay'] = async day => {
-    requireAdmin();
-    if (day.youtubeUrl && !getYouTubeId(day.youtubeUrl)) throw new Error('Ingresá una URL válida de un video de YouTube.');
-    const { error } = await supabase.from('competition_days').upsert({
-      event_id: day.eventId, event_date: day.date, youtube_url: day.youtubeUrl || null, time_zone: day.timeZone,
-    }, { onConflict: 'event_id,event_date' }).select('id').single();
-    if (error) throw error;
-    await refreshData();
-  };
   const saveClass: EquestrianContextType['saveClass'] = async entry => {
     requireAdmin();
-    const payload = { day_id: entry.dayId, event_id: entry.eventId, event_date: entry.date,
+    if (arenaError) throw new Error(arenaError);
+    const arena = arenas.find(item => item.id === entry.arenaId && item.eventId === entry.eventId);
+    if (!arena) throw new Error('Seleccioná una pista del concurso.');
+    const dayId = await ensureDay(entry.eventId, entry.date);
+    const payload = { day_id: dayId, arena_id: arena.id, event_id: entry.eventId, event_date: entry.date,
       start_time: entry.time || null, number: entry.number.trim(), name: entry.name.trim(),
       description: entry.description.trim(), sort_order: entry.order };
     const response = entry.id
@@ -410,16 +437,56 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (error) throw error;
     await refreshData();
   };
+
+  const ensureDay = async (eventId: string, date: string) => {
+    requireAdmin();
+    const { error: insertError } = await supabase.from('competition_days')
+      .upsert({ event_id: eventId, event_date: date }, { onConflict: 'event_id,event_date', ignoreDuplicates: true });
+    if (insertError) throw insertError;
+    const { data, error } = await supabase.from('competition_days').select('id').eq('event_id', eventId).eq('event_date', date).single();
+    if (error) throw error;
+    return data.id as string;
+  };
+  const saveArena: EquestrianContextType['saveArena'] = async (eventId, name, id) => {
+    requireAdmin();
+    if (!name.trim()) throw new Error('Ingresá el nombre de la pista.');
+    const response = id
+      ? await supabase.from('competition_arenas').update({ name: name.trim() }).eq('id', id).eq('event_id', eventId).select('id').single()
+      : await supabase.from('competition_arenas').insert({ event_id: eventId, name: name.trim() }).select('id').single();
+    if (response.error) throw response.error;
+    await refreshData();
+  };
+  const deleteArena = async (id: string) => {
+    requireAdmin();
+    const { error } = await supabase.from('competition_arenas').delete().eq('id', id).select('id').single();
+    if (error) throw new Error('No se puede eliminar una pista con pruebas o transmisiones asignadas.');
+    await refreshData();
+  };
+  const saveStream: EquestrianContextType['saveStream'] = async (eventId, date, arenaId, url, timeZone) => {
+    requireAdmin();
+    if (arenaError) throw new Error(arenaError);
+    const trimmedUrl = url.trim();
+    if (trimmedUrl && !getYouTubeId(trimmedUrl)) throw new Error('Ingresá un enlace válido de un video de YouTube.');
+    if (!arenas.some(arena => arena.id === arenaId && arena.eventId === eventId)) throw new Error('Seleccioná una pista del concurso.');
+    const dayId = await ensureDay(eventId, date);
+    const { error } = await supabase.rpc('equidate_save_stream', {
+      target_day: dayId, target_arena: arenaId, video_url: trimmedUrl || null, zone: timeZone || DEFAULT_TIME_ZONE,
+    });
+    if (error) throw error;
+    await refreshData();
+  };
+  const namedDocuments = documents.map(doc => ({ ...doc, name: documentLabel(doc, classes) }));
+
   return <EquestrianContext.Provider value={{
-    events, documents, days, classes, dataError, scheduleError, saveDay, saveClass, deleteClass,
+    events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, deleteClass,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
     setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus,
     addDocument, updateDocument, deleteDocument, reorderDocument,
-    getDocumentsForEvent: id => documents.filter(doc => doc.eventId === id).sort((first, second) => first.order - second.order),
+    getDocumentsForEvent: id => namedDocuments.filter(doc => doc.eventId === id).sort((first, second) => first.order - second.order),
     getEventById: id => events.find(event => event.id === id),
-    getDocumentById: id => documents.find(doc => doc.id === id),
+    getDocumentById: id => namedDocuments.find(doc => doc.id === id),
   }}>{children}</EquestrianContext.Provider>;
 };
 export const useEquestrian = () => {

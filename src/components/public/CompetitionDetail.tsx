@@ -24,6 +24,7 @@ export const CompetitionDetail: React.FC = () => {
   const {
     days: competitionDays,
     classes,
+    streams,
     scheduleError,
     selectedEventId,
     setSelectedEventId,
@@ -61,10 +62,10 @@ export const CompetitionDetail: React.FC = () => {
         ...header,
         startLists,
         results,
-        hasContent: startLists.length > 0 || results.length > 0 || classes.some(entry => entry.eventId === event.id && entry.date === dateStr) || competitionDays.some(day => day.eventId === event.id && day.date === dateStr && day.youtubeUrl)
+        hasContent: startLists.length > 0 || results.length > 0 || classes.some(entry => entry.eventId === event.id && entry.date === dateStr) || competitionDays.some(day => day.eventId === event.id && day.date === dateStr && (day.youtubeUrl || streams.some(stream => stream.dayId === day.id && stream.youtubeUrl)))
       };
     });
-  }, [event, allDocs, classes, competitionDays]);
+  }, [event, allDocs, classes, competitionDays, streams]);
 
   // Initialize first day with content open by default
   React.useEffect(() => {

@@ -1,5 +1,7 @@
 # EquiDate: actualización de jornadas, pruebas y permisos
 
+Si esta migración ya está aplicada, continuar con [la actualización de pistas](ACTUALIZACION_PISTAS.md). No repetir los pasos de creación de jornadas.
+
 ## Estado y orden de despliegue
 
 Esta entrega no ejecuta SQL contra Supabase ni modifica sus datos reales.

@@ -102,5 +102,74 @@ test('Incremental migration preserves records and enforces RLS and associations'
       assert.equal((await db.query<{ storage_path: string }>('SELECT storage_path FROM document_pages WHERE document_id=$1', [docId])).rows[0].storage_path, 'new.jpg');
     });
   });
+
+  const existingPages = (await db.query('SELECT * FROM document_pages ORDER BY id')).rows;
+  const existingDocs = (await db.query('SELECT * FROM documents ORDER BY id')).rows;
+  const existingClasses = (await db.query('SELECT id, day_id, event_id, event_date, name FROM competition_classes ORDER BY id')).rows;
+  await db.exec(await readFile(new URL('../supabase/migrations/20261006_arenas_streams.sql', import.meta.url), 'utf8'));
+  const primary = (await db.query<{ id: string }>('SELECT id FROM competition_arenas WHERE event_id=$1 AND is_primary', [published])).rows[0].id;
+  const privateArena = (await db.query<{ id: string }>('SELECT id FROM competition_arenas WHERE event_id=$1 AND is_primary', [draft])).rows[0].id;
+  const secondary = '00000000-0000-4000-8000-000000000020';
+  await context.test('Arena migration preserves every document/page and copies legacy streams to the primary arena', async () => {
+    assert.deepEqual((await db.query('SELECT * FROM document_pages ORDER BY id')).rows, existingPages);
+    assert.deepEqual((await db.query('SELECT * FROM documents ORDER BY id')).rows, existingDocs);
+    assert.deepEqual((await db.query('SELECT id, day_id, event_id, event_date, name FROM competition_classes ORDER BY id')).rows, existingClasses);
+    assert.equal((await db.query<{ arena_id: string }>('SELECT arena_id FROM competition_classes WHERE id=$1', [classId])).rows[0].arena_id, primary);
+    assert.equal((await db.query('SELECT * FROM competition_streams')).rows.length, 3);
+  });
+  await context.test('One stream per day/arena, independent URLs and transaction rollback', async () => {
+    await asRole('authenticated', true, async () => {
+      await db.query("INSERT INTO competition_arenas(id,event_id,name) VALUES ($1,$2,'Pista de arena')", [secondary, published]);
+      await db.query("SELECT equidate_save_stream($1,$2,'https://youtu.be/12345678901','America/Montevideo')", [dayId, secondary]);
+      assert.equal((await db.query('SELECT * FROM competition_streams WHERE day_id=$1', [dayId])).rows.length, 2);
+      assert.equal((await db.query<{ youtube_url: string }>('SELECT youtube_url FROM competition_streams WHERE day_id=$1 AND arena_id=$2', [dayId, primary])).rows[0].youtube_url, 'https://youtu.be/abcdefghijk');
+      await assert.rejects(db.query("SELECT equidate_save_stream($1,$2,'https://youtu.be/abcdefghijk','Europe/Madrid')", [dayId, privateArena]));
+      assert.equal((await db.query<{ time_zone: string }>('SELECT time_zone FROM competition_days WHERE id=$1', [dayId])).rows[0].time_zone, 'America/Montevideo');
+      await db.query('UPDATE competition_classes SET arena_id=$1 WHERE id=$2', [secondary, classId]);
+      await assert.rejects(db.query('UPDATE competition_classes SET arena_id=$1 WHERE id=$2', [privateArena, classId]));
+      await assert.rejects(db.query('DELETE FROM competition_arenas WHERE id=$1', [secondary]));
+      await assert.rejects(db.query('DELETE FROM competition_arenas WHERE id=$1', [primary]));
+      await db.query("SELECT equidate_save_stream($1,$2,NULL,'America/Montevideo')", [dayId, secondary]);
+      assert.equal((await db.query('SELECT * FROM competition_streams WHERE day_id=$1', [dayId])).rows.length, 1);
+      assert.equal((await db.query('SELECT * FROM competition_classes WHERE arena_id=$1', [secondary])).rows.length, 1);
+      await db.query("SELECT equidate_save_stream($1,$2,'https://youtu.be/abcdefghijk','America/Montevideo')", [dayId, secondary]);
+      assert.equal((await db.query('SELECT * FROM competition_streams WHERE day_id=$1', [dayId])).rows.length, 2);
+    });
+  });
+  await context.test('New list/result documents require a class, titles and dates are generated, legacy records remain assignable', async () => {
+    await asRole('authenticated', true, async () => {
+      await assert.rejects(db.query("INSERT INTO documents(event_id,name,type,mime_type) VALUES ($1,'Manual','START_LIST','application/pdf')", [published]));
+      await db.query("INSERT INTO documents(event_id,class_id,name,type,event_date,mime_type) VALUES ($1,$2,'Ignored','RESULT','2026-01-01','application/pdf')", [published, classId]);
+      const result = (await db.query<{ name: string; event_date: string }>("SELECT name,event_date::text FROM documents WHERE type='RESULT' AND class_id=$1", [classId])).rows[0];
+      assert.equal(result.name, 'Resultados · Prueba 54 · Libre 1.30');
+      assert.equal(result.event_date, '2026-10-04');
+      await db.query("INSERT INTO documents(event_id,name,type,event_date,mime_type) VALUES ($1,'Ignored','PROGRAM','2026-10-04','application/pdf')", [published]);
+      const program = (await db.query<{ name: string; event_date: string | null }>("SELECT name,event_date FROM documents WHERE type='PROGRAM'")).rows[0];
+      assert.equal(program.name, 'Anteprograma');
+      assert.equal(program.event_date, null);
+      await assert.rejects(db.query('UPDATE documents SET class_id=NULL WHERE id=$1', [docId]));
+      await db.query('UPDATE documents SET class_id=$1 WHERE id=$2', [draftClass, draftDoc]);
+      assert.deepEqual((await db.query('SELECT * FROM document_pages ORDER BY id')).rows, existingPages);
+    });
+  });
+  await context.test('Arena and stream RLS rejects ordinary users and hides draft contests', async () => {
+    for (const role of ['anon', 'authenticated']) await asRole(role, false, async () => {
+      assert.equal((await db.query('SELECT * FROM competition_arenas WHERE event_id=$1', [draft])).rows.length, 0);
+      assert.equal((await db.query('SELECT * FROM competition_streams WHERE event_id=$1', [draft])).rows.length, 0);
+      await assert.rejects(db.query("INSERT INTO competition_arenas(event_id,name) VALUES ($1,'Forbidden')", [published]));
+      await assert.rejects(db.query("SELECT equidate_save_stream($1,$2,'https://youtu.be/abcdefghijk','Europe/Madrid')", [dayId, primary]));
+      if (role === 'authenticated') {
+        assert.equal((await db.query("UPDATE competition_arenas SET name='Forbidden' WHERE id=$1 RETURNING id", [secondary])).rows.length, 0);
+        assert.equal((await db.query('DELETE FROM competition_streams WHERE day_id=$1 RETURNING id', [dayId])).rows.length, 0);
+      }
+    });
+  });
+  await context.test('A new contest automatically receives a primary arena', async () => {
+    await asRole('authenticated', true, async () => {
+      const created = (await db.query<{ id: string }>("INSERT INTO events(name,venue,start_date,end_date) VALUES ('Nuevo','Club','2026-10-04','2026-10-05') RETURNING id")).rows[0].id;
+      assert.equal((await db.query('SELECT * FROM competition_arenas WHERE event_id=$1 AND is_primary', [created])).rows.length, 1);
+    });
+  });
+
   await db.close();
 });

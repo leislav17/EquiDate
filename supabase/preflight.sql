@@ -1,12 +1,12 @@
 SELECT table_name, column_name, data_type, is_nullable
 FROM information_schema.columns
 WHERE table_schema = 'public'
-AND table_name IN ('events', 'documents', 'document_pages', 'competition_days', 'competition_classes')
+AND table_name IN ('events', 'documents', 'document_pages', 'competition_days', 'competition_classes', 'competition_arenas', 'competition_streams')
 ORDER BY table_name, ordinal_position;
 
 SELECT schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check
 FROM pg_policies
-WHERE (schemaname = 'public' AND tablename IN ('events', 'documents', 'document_pages', 'competition_days', 'competition_classes'))
+WHERE (schemaname = 'public' AND tablename IN ('events', 'documents', 'document_pages', 'competition_days', 'competition_classes', 'competition_arenas', 'competition_streams'))
 OR (schemaname = 'storage' AND tablename = 'objects')
 ORDER BY schemaname, tablename, policyname;
 

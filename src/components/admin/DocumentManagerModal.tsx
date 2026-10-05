@@ -4,6 +4,7 @@ import {
   DocumentItem,
   DocumentType
 } from '../../types/equestrian';
+import { documentLabel } from '../../utils/documents';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { getDaysBetween, formatDayHeader } from '../../utils/dateUtils';
 import {
@@ -42,6 +43,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const {
     getDocumentsForEvent,
     classes,
+    arenas,
     addDocument,
     updateDocument,
     deleteDocument,
@@ -69,10 +71,8 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
   // New doc fields
   const [docType, setDocType] = useState<DocumentType>('PROGRAM');
-  const [docDay, setDocDay] = useState<string>('general');
   const [docClass, setDocClass] = useState('');
   const [saving, setSaving] = useState(false);
-  const [docName, setDocName] = useState<string>('');
 
   // Multi-page image items
   const [pageItems, setPageItems] = useState<PageItem[]>([]);
@@ -88,26 +88,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const handleTypeChange = (newType: DocumentType) => {
     setDocType(newType);
     setDocClass('');
-    if (newType === 'PROGRAM') {
-      setDocDay('general');
-      if (!docName || docName.startsWith('Orden') || docName.startsWith('Resultado')) {
-        setDocName('Anteprograma Oficial');
-      }
-    } else if (newType === 'START_LIST') {
-      if (availableDays.length > 0 && docDay === 'general') {
-        setDocDay(availableDays[0].dateStr);
-      }
-      if (!docName || docName.startsWith('Anteprograma') || docName.startsWith('Resultado')) {
-        setDocName('Orden de Ingreso — Prueba 1 (1.10 m)');
-      }
-    } else if (newType === 'RESULT') {
-      if (availableDays.length > 0 && docDay === 'general') {
-        setDocDay(availableDays[0].dateStr);
-      }
-      if (!docName || docName.startsWith('Anteprograma') || docName.startsWith('Orden')) {
-        setDocName('Resultados Oficiales — Prueba 1');
-      }
-    }
+
   };
 
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,8 +164,9 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
   const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docName.trim()) {
-      setFormError('Ingresá el nombre del documento.');
+    const selectedClass = classes.find(entry => entry.id === docClass && entry.eventId === event.id);
+    if (docType !== 'PROGRAM' && !selectedClass) {
+      setFormError('Seleccioná la prueba a la que pertenece el documento.');
       return;
     }
 
@@ -201,9 +183,9 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
         {
           eventId: event.id,
           classId: docClass || null,
-          name: docName.trim(),
+          name: documentLabel({ type: docType, classId: docClass }, classes),
           type: docType,
-          eventDate: docDay === 'general' ? null : docDay,
+          eventDate: docType === 'PROGRAM' ? null : selectedClass!.date,
           fileUrl: '',
           mimeType: 'application/pdf',
         },
@@ -214,9 +196,9 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
         {
           eventId: event.id,
           classId: docClass || null,
-          name: docName.trim(),
+          name: documentLabel({ type: docType, classId: docClass }, classes),
           type: docType,
-          eventDate: docDay === 'general' ? null : docDay,
+          eventDate: docType === 'PROGRAM' ? null : selectedClass!.date,
           fileUrl: pageItems[0]?.dataUrl || '',
           mimeType: pageItems[0]?.mimeType || 'image/jpeg',
         },
@@ -235,7 +217,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     setPageItems([]);
     setPdfFile(null);
     setPdfName('');
-    setDocName('');
+    setDocClass('');
     setFormError('');
     } catch (error) { setFormError((error as Error).message || 'No se pudo guardar.'); }
     finally { setSaving(false); }
@@ -353,39 +335,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   </div>
                 </div>
 
-                {/* 2. DÍA */}
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                    Día asignado *
-                  </label>
-                  <select
-                    value={docDay}
-                    onChange={(e) => { setDocDay(e.target.value); setDocClass(''); }}
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-xs sm:text-sm bg-white focus:outline-none focus:border-neutral-900 font-medium"
-                  >
-                    <option value="general">General (Sin día específico / Anteprograma)</option>
-                    {availableDays.map((d) => (
-                      <option key={d.dateStr} value={d.dateStr}>
-                        {d.label}
-                      </option>
-                    ))}
+                {docType === 'PROGRAM' ? <p className="text-sm text-neutral-600">El anteprograma se asocia al concurso completo.</p> : <label className="block text-sm font-bold">Prueba del documento
+                  <select required aria-label="Prueba del documento" value={docClass} onChange={form => setDocClass(form.target.value)} className="block w-full p-3 border rounded-lg mt-1 text-sm">
+                    <option value="" disabled>Seleccioná una prueba</option>
+                    {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
                   </select>
-                </div>
-
-                {/* 3. NOMBRE */}
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                    Nombre del documento *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={docName}
-                    onChange={(e) => setDocName(e.target.value)}
-                    placeholder="ej. Orden de ingreso 1.20 m"
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-xs sm:text-sm focus:outline-none focus:border-neutral-900 bg-white"
-                  />
-                </div>
+                  {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde el botón Pruebas del concurso.</span>}
+                </label>}
 
                 {/* 4. ARCHIVO O PÁGINAS MULTIPÁGINA */}
                 <div className="space-y-3">
@@ -530,16 +486,6 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
                 </div>
 
-                {docType !== 'PROGRAM' && <label className="block text-xs font-bold">Prueba
-                  <select aria-label="Prueba del documento" value={docClass} onChange={event => {
-                    setDocClass(event.target.value);
-                    const entry = classes.find(item => item.id === event.target.value);
-                    if (entry) setDocDay(entry.date);
-                  }} className="block w-full p-2 border rounded-lg mt-1">
-                    <option value="">Documento de la jornada (sin prueba asignada)</option>
-                    {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}</option>)}
-                  </select>
-                </label>}
                 {/* Form Buttons */}
                 <div className="pt-2 flex justify-end gap-2">
                   <button
@@ -612,60 +558,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       {/* Details / Edit inputs */}
                       <div className="min-w-0 flex-1">
                         {isEditing ? (
-                          <div className="space-y-1.5">
-                            <input
-                              type="text"
-                              defaultValue={doc.name}
-                              onBlur={(e) =>
-                                runAction(updateDocument(doc.id, { name: e.target.value.trim() }))
-                              }
-                              className="w-full px-2 py-1 text-xs border border-neutral-300 rounded"
-                            />
-                            <div className="flex gap-2">
-                              <select
-                                defaultValue={doc.type}
-                                onChange={(e) =>
-                                  runAction(updateDocument(doc.id, {
-                                    type: e.target.value as DocumentType,
-                                    classId: e.target.value === 'PROGRAM' ? null : doc.classId
-                                  }))
-                                }
-                                className="text-[11px] px-2 py-0.5 border border-neutral-300 rounded bg-white"
-                              >
-                                <option value="PROGRAM">Anteprograma</option>
-                                <option value="START_LIST">Listado</option>
-                                <option value="RESULT">Resultado</option>
-                              </select>
-                              <select
-                                defaultValue={doc.eventDate || 'general'}
-                                onChange={(e) =>
-                                  runAction(updateDocument(doc.id, {
-                                    classId: null,
-                                    eventDate:
-                                      e.target.value === 'general'
-                                        ? null
-                                        : e.target.value
-                                  }))
-                                }
-                                className="text-[11px] px-2 py-0.5 border border-neutral-300 rounded bg-white"
-                              >
-                                <option value="general">General</option>
-                                {availableDays.map((d) => (
-                                  <option key={d.dateStr} value={d.dateStr}>
-                                    {d.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => setEditingDocId(null)}
-                                className="p-1 text-emerald-600 hover:text-emerald-800"
-                                title="Guardar cambios"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
+                          <DocumentAssignment doc={doc} onSaved={() => setEditingDocId(null)} />
                         ) : (
                           <>
                             <h4 className="text-xs sm:text-sm font-bold text-neutral-900 truncate">
@@ -749,3 +642,28 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     </div>
   );
 };
+
+function DocumentAssignment({ doc, onSaved }: { doc: DocumentItem; onSaved: () => void }) {
+  const { classes, arenas, updateDocument } = useEquestrian();
+  const [type, setType] = useState(doc.type);
+  const [classId, setClassId] = useState(doc.classId || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return <form className="space-y-2" onSubmit={async form => {
+    form.preventDefault(); setBusy(true); setError('');
+    try { await updateDocument(doc.id, { type, classId: type === 'PROGRAM' ? null : classId }); onSaved(); }
+    catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }}>
+    <label className="block text-xs">Tipo de documento<select className="w-full p-2 border rounded mt-1" value={type} onChange={form => setType(form.target.value as DocumentType)}>
+      <option value="PROGRAM">Anteprograma</option><option value="START_LIST">Listado</option><option value="RESULT">Resultados</option>
+    </select></label>
+    {type !== 'PROGRAM' && <label className="block text-xs">Prueba asociada<select required className="w-full p-2 border rounded mt-1" value={classId} onChange={form => setClassId(form.target.value)}>
+      <option value="" disabled>Seleccioná una prueba</option>
+      {classes.filter(entry => entry.eventId === doc.eventId).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === doc.eventId).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
+    </select></label>}
+    {type === 'PROGRAM' && <p className="text-xs text-neutral-500">General del concurso</p>}
+    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    <button disabled={busy} className="px-3 min-h-11 bg-[#123E59] text-white rounded-lg text-xs font-bold">Guardar asignación</button>
+  </form>;
+}

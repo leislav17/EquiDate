@@ -68,6 +68,7 @@ export interface CompetitionDay {
 }
 
 export interface CompetitionClass {
+  arenaId: string;
   id: string;
   dayId: string;
   eventId: string;
@@ -77,4 +78,19 @@ export interface CompetitionClass {
   name: string;
   description: string;
   order: number;
+}
+
+export interface CompetitionArena {
+  id: string;
+  eventId: string;
+  name: string;
+  isPrimary: boolean;
+}
+
+export interface CompetitionStream {
+  id: string;
+  eventId: string;
+  dayId: string;
+  arenaId: string;
+  youtubeUrl: string;
 }

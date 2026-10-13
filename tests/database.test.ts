@@ -21,11 +21,12 @@ test('Incremental migration preserves records and enforces RLS and associations'
       $$ SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
     GRANT USAGE ON SCHEMA public, auth, storage TO anon, authenticated;
     CREATE FUNCTION public.uuid_generate_v4() RETURNS uuid LANGUAGE sql AS $$ SELECT gen_random_uuid() $$;
-    CREATE TABLE storage.buckets (id text PRIMARY KEY, name text, public boolean);
+    CREATE TABLE storage.buckets (id text PRIMARY KEY, name text, public boolean, allowed_mime_types text[], file_size_limit bigint);
     CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text, name text);
     ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
     GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
     GRANT SELECT ON storage.objects TO anon;
+    GRANT SELECT ON storage.buckets TO authenticated, anon;
   `);
   const schema = (await readFile(new URL('../supabase/schema.sql', import.meta.url), 'utf8')).replace('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";', '');
   await db.exec(schema);
@@ -152,6 +153,127 @@ test('Incremental migration preserves records and enforces RLS and associations'
       assert.deepEqual((await db.query('SELECT * FROM document_pages ORDER BY id')).rows, existingPages);
     });
   });
+
+  await db.exec(await readFile(new URL('../supabase/migrations/20261012_regulation_documents.sql', import.meta.url), 'utf8'));
+
+  await context.test('Regulation migration supports general REGULATION documents with PDF and image pages', async () => {
+    await asRole('authenticated', true, async () => {
+      const regDocId = '00000000-0000-4000-8000-000000000030';
+      // Save REGULATION via equidate_save_document with PDF and single page in page_payload
+      const regPayload = {
+        id: regDocId,
+        event_id: published,
+        name: 'Reglamento',
+        type: 'REGULATION',
+        event_date: null,
+        class_id: null,
+        storage_path: 'events/published/reglamento.pdf',
+        mime_type: 'application/pdf',
+        sort_order: 1,
+      };
+      const regPagePayload = [
+        { storage_path: 'events/published/reglamento.pdf', mime_type: 'application/pdf', sort_order: 1 }
+      ];
+      await db.query('SELECT equidate_save_document($1, $2)', [JSON.stringify(regPayload), JSON.stringify(regPagePayload)]);
+
+      const savedReg = (await db.query<{ name: string; type: string; event_date: string | null; class_id: string | null; storage_path: string }>(
+        'SELECT name, type, event_date, class_id, storage_path FROM documents WHERE id=$1', [regDocId]
+      )).rows[0];
+      assert.equal(savedReg.name, 'Reglamento');
+      assert.equal(savedReg.type, 'REGULATION');
+      assert.equal(savedReg.event_date, null);
+      assert.equal(savedReg.class_id, null);
+      assert.equal(savedReg.storage_path, 'events/published/reglamento.pdf');
+
+      const savedPage = (await db.query<{ storage_path: string; mime_type: string }>(
+        'SELECT storage_path, mime_type FROM document_pages WHERE document_id=$1', [regDocId]
+      )).rows[0];
+      assert.equal(savedPage.storage_path, 'events/published/reglamento.pdf');
+      assert.equal(savedPage.mime_type, 'application/pdf');
+
+      // Test direct insert of REGULATION triggers automatic name 'Reglamento' and clears event_date/class_id
+      const directRegId = '00000000-0000-4000-8000-000000000031';
+      await db.query(
+        "INSERT INTO documents(id, event_id, name, type, event_date, mime_type) VALUES ($1, $2, 'Nombre Manual', 'REGULATION', '2026-10-04', 'application/pdf')",
+        [directRegId, published]
+      );
+      const directReg = (await db.query<{ name: string; event_date: string | null }>(
+        'SELECT name, event_date FROM documents WHERE id=$1', [directRegId]
+      )).rows[0];
+      assert.equal(directReg.name, 'Reglamento');
+      assert.equal(directReg.event_date, null);
+
+      // Test converting an existing document to REGULATION clears class and sets name to Reglamento
+      const convertDocId = '00000000-0000-4000-8000-000000000032';
+      await db.query(
+        "INSERT INTO documents(id, event_id, class_id, name, type, event_date, mime_type) VALUES ($1, $2, $3, 'Resultados Antiguos', 'RESULT', '2026-10-04', 'image/jpeg')",
+        [convertDocId, published, classId]
+      );
+      // Update to REGULATION clearing class_id
+      await db.query(
+        "UPDATE documents SET type='REGULATION', class_id=NULL, event_date=NULL WHERE id=$1",
+        [convertDocId]
+      );
+      const converted = (await db.query<{ name: string; type: string; class_id: string | null; event_date: string | null }>(
+        'SELECT name, type, class_id, event_date FROM documents WHERE id=$1', [convertDocId]
+      )).rows[0];
+      assert.equal(converted.type, 'REGULATION');
+      assert.equal(converted.name, 'Reglamento');
+      assert.equal(converted.class_id, null);
+      assert.equal(converted.event_date, null);
+
+      // Verify storage bucket has allowed_mime_types = NULL and 25MB file_size_limit
+      const bucket = (await db.query<{ allowed_mime_types: unknown; file_size_limit: number }>(
+        "SELECT allowed_mime_types, file_size_limit FROM storage.buckets WHERE id='event-documents'"
+      )).rows[0];
+      assert.equal(bucket.allowed_mime_types, null);
+      assert.equal(Number(bucket.file_size_limit), 26214400);
+
+      // Test secure deletion via equidate_delete_document
+      const delDocId = '00000000-0000-4000-8000-000000000033';
+      await db.query(
+        "INSERT INTO documents(id, event_id, name, type, mime_type, storage_path) VALUES ($1, $2, 'Para Borrar', 'PROGRAM', 'application/pdf', 'events/published/borrar.pdf')",
+        [delDocId, published]
+      );
+      await db.query(
+        "INSERT INTO document_pages(document_id, storage_path, mime_type, sort_order) VALUES ($1, 'events/published/borrar.pdf', 'application/pdf', 1)",
+        [delDocId]
+      );
+
+      // Verify document and page exist before delete
+      assert.equal((await db.query('SELECT 1 FROM documents WHERE id=$1', [delDocId])).rows.length, 1);
+      assert.equal((await db.query('SELECT 1 FROM document_pages WHERE document_id=$1', [delDocId])).rows.length, 1);
+
+      // Execute equidate_delete_document as admin
+      const delResult = (await db.query<{ equidate_delete_document: { success: boolean; deleted_storage_paths: string[] } }>(
+        'SELECT equidate_delete_document($1)', [delDocId]
+      )).rows[0].equidate_delete_document;
+
+      assert.equal(delResult.success, true);
+      assert.deepEqual(delResult.deleted_storage_paths, ['events/published/borrar.pdf']);
+
+      // Verify exclusively delDocId was removed
+      assert.equal((await db.query('SELECT 1 FROM documents WHERE id=$1', [delDocId])).rows.length, 0);
+      assert.equal((await db.query('SELECT 1 FROM document_pages WHERE document_id=$1', [delDocId])).rows.length, 0);
+      // Other documents still exist
+      assert.equal((await db.query('SELECT 1 FROM documents WHERE id=$1', [regDocId])).rows.length, 1);
+    });
+
+    // Test non-admin cannot delete documents via equidate_delete_document or directly
+    for (const role of ['anon', 'authenticated']) {
+      await asRole(role, false, async () => {
+        await assert.rejects(
+          db.query("SELECT equidate_delete_document('00000000-0000-4000-8000-000000000030')"),
+          (err: Error) => err.message.includes('Permisos de administrador') || (err as { code?: string }).code === '42501'
+        );
+        if (role === 'authenticated') {
+          // Direct delete should affect 0 rows or be rejected by RLS
+          const res = await db.query("DELETE FROM documents WHERE id='00000000-0000-4000-8000-000000000030' RETURNING id");
+          assert.equal(res.rows.length, 0);
+        }
+      });
+    }
+  });
   await context.test('Arena and stream RLS rejects ordinary users and hides draft contests', async () => {
     for (const role of ['anon', 'authenticated']) await asRole(role, false, async () => {
       assert.equal((await db.query('SELECT * FROM competition_arenas WHERE event_id=$1', [draft])).rows.length, 0);
@@ -168,6 +290,152 @@ test('Incremental migration preserves records and enforces RLS and associations'
     await asRole('authenticated', true, async () => {
       const created = (await db.query<{ id: string }>("INSERT INTO events(name,venue,start_date,end_date) VALUES ('Nuevo','Club','2026-10-04','2026-10-05') RETURNING id")).rows[0].id;
       assert.equal((await db.query('SELECT * FROM competition_arenas WHERE event_id=$1 AND is_primary', [created])).rows.length, 1);
+    });
+  });
+  await context.test('Batch multi-day class creation is atomic and creates independent records', async () => {
+    await asRole('authenticated', true, async () => {
+      // Create multi-day classes for day 1 and day 2
+      const day2Id = (await db.query<{ id: string }>(
+        'SELECT id FROM competition_days WHERE event_id=$1 AND event_date=$2', [published, '2026-10-05']
+      )).rows[0].id;
+
+      const multiInsert = await db.query<{ id: string; event_date: string; start_time: string }>(
+        `INSERT INTO competition_classes (day_id, event_id, event_date, arena_id, number, name, start_time, sort_order)
+         VALUES
+           ($1, $2, '2026-10-04', $3, '10', '1 m', '09:00', 1),
+           ($4, $2, '2026-10-05', $3, '10', '1 m', '09:30', 1)
+         RETURNING id, event_date, start_time`,
+        [dayId, published, primary, day2Id]
+      );
+      assert.equal(multiInsert.rows.length, 2);
+
+      const class1 = multiInsert.rows[0].id;
+      const class2 = multiInsert.rows[1].id;
+
+      // Edit class 2 independently
+      await db.query("UPDATE competition_classes SET start_time='10:00' WHERE id=$1", [class2]);
+      const checkClass2 = (await db.query<{ start_time: string }>("SELECT start_time FROM competition_classes WHERE id=$1", [class2])).rows[0];
+      const checkClass1 = (await db.query<{ start_time: string }>("SELECT start_time FROM competition_classes WHERE id=$1", [class1])).rows[0];
+      assert.equal(checkClass2.start_time, '10:00:00');
+      assert.equal(checkClass1.start_time, '09:00:00'); // remains unchanged
+
+      // Delete class 1 independently
+      await db.query("DELETE FROM competition_classes WHERE id=$1", [class1]);
+      assert.equal((await db.query("SELECT 1 FROM competition_classes WHERE id=$1", [class1])).rows.length, 0);
+      assert.equal((await db.query("SELECT 1 FROM competition_classes WHERE id=$1", [class2])).rows.length, 1);
+    });
+  });
+
+  await db.exec(await readFile(new URL('../supabase/migrations/20261013_other_documents.sql', import.meta.url), 'utf8'));
+
+  await context.test('Other documents migration supports general OTHER documents with custom names and validation', async () => {
+    await asRole('authenticated', true, async () => {
+      const otherDocId = '00000000-0000-4000-8000-000000000040';
+      // 1. Save OTHER document via equidate_save_document with custom name
+      const otherPayload = {
+        id: otherDocId,
+        event_id: published,
+        name: 'Información para participantes',
+        type: 'OTHER',
+        event_date: null,
+        class_id: null,
+        storage_path: 'events/published/info.pdf',
+        mime_type: 'application/pdf',
+        sort_order: 1,
+      };
+      const otherPagePayload = [
+        { storage_path: 'events/published/info.pdf', mime_type: 'application/pdf', sort_order: 1 }
+      ];
+      await db.query('SELECT equidate_save_document($1, $2)', [JSON.stringify(otherPayload), JSON.stringify(otherPagePayload)]);
+
+      const savedOther = (await db.query<{ name: string; type: string; event_date: string | null; class_id: string | null; storage_path: string }>(
+        'SELECT name, type, event_date, class_id, storage_path FROM documents WHERE id=$1', [otherDocId]
+      )).rows[0];
+      assert.equal(savedOther.name, 'Información para participantes');
+      assert.equal(savedOther.type, 'OTHER');
+      assert.equal(savedOther.event_date, null);
+      assert.equal(savedOther.class_id, null);
+      assert.equal(savedOther.storage_path, 'events/published/info.pdf');
+
+      // 2. Multiple OTHER documents in the same competition
+      const secondOtherId = '00000000-0000-4000-8000-000000000041';
+      const secondPayload = {
+        id: secondOtherId,
+        event_id: published,
+        name: 'Estabulación y Boxes',
+        type: 'OTHER',
+        event_date: null,
+        class_id: null,
+        storage_path: 'events/published/boxes.jpg',
+        mime_type: 'image/jpeg',
+        sort_order: 2,
+      };
+      await db.query('SELECT equidate_save_document($1, null)', [JSON.stringify(secondPayload)]);
+      const savedSecond = (await db.query<{ name: string; type: string; event_date: string | null }>(
+        'SELECT name, type, event_date FROM documents WHERE id=$1', [secondOtherId]
+      )).rows[0];
+      assert.equal(savedSecond.name, 'Estabulación y Boxes');
+      assert.equal(savedSecond.type, 'OTHER');
+      assert.equal(savedSecond.event_date, null);
+
+      // 3. Validation: rejecting OTHER document with empty or whitespace-only name
+      const blankOtherId = '00000000-0000-4000-8000-000000000042';
+      await assert.rejects(
+        db.query(
+          "INSERT INTO documents(id, event_id, name, type, mime_type) VALUES ($1, $2, '   ', 'OTHER', 'application/pdf')",
+          [blankOtherId, published]
+        ),
+        /El nombre del documento es obligatorio/
+      );
+
+      // 4. Updating and renaming an OTHER document
+      await db.query("UPDATE documents SET name='Información de Acceso Actualizada' WHERE id=$1", [otherDocId]);
+      const updatedName = (await db.query<{ name: string }>("SELECT name FROM documents WHERE id=$1", [otherDocId])).rows[0].name;
+      assert.equal(updatedName, 'Información de Acceso Actualizada');
+
+      // 5. Converting a class document (RESULT) to OTHER clears class_id and event_date and keeps custom name
+      const convertDocId = '00000000-0000-4000-8000-000000000043';
+      await db.query(
+        "INSERT INTO documents(id, event_id, class_id, name, type, event_date, mime_type) VALUES ($1, $2, $3, 'Resultados Prueba', 'RESULT', '2026-10-04', 'image/jpeg')",
+        [convertDocId, published, classId]
+      );
+      await db.query(
+        "UPDATE documents SET type='OTHER', name='Plano de Pistas', class_id=NULL, event_date=NULL WHERE id=$1",
+        [convertDocId]
+      );
+      const convertedDoc = (await db.query<{ name: string; type: string; class_id: string | null; event_date: string | null }>(
+        'SELECT name, type, class_id, event_date FROM documents WHERE id=$1', [convertDocId]
+      )).rows[0];
+      assert.equal(convertedDoc.name, 'Plano de Pistas');
+      assert.equal(convertedDoc.type, 'OTHER');
+      assert.equal(convertedDoc.class_id, null);
+      assert.equal(convertedDoc.event_date, null);
+
+      // 6. Converting OTHER to REGULATION sets automatic name 'Reglamento'
+      await db.query("UPDATE documents SET type='REGULATION' WHERE id=$1", [convertDocId]);
+      const regConverted = (await db.query<{ name: string; type: string }>(
+        'SELECT name, type FROM documents WHERE id=$1', [convertDocId]
+      )).rows[0];
+      assert.equal(regConverted.name, 'Reglamento');
+      assert.equal(regConverted.type, 'REGULATION');
+
+      // 7. Delete an OTHER document via equidate_delete_document safely
+      const delResult = (await db.query<{ equidate_delete_document: { success: boolean } }>(
+        'SELECT equidate_delete_document($1)', [secondOtherId]
+      )).rows[0].equidate_delete_document;
+      assert.equal(delResult.success, true);
+      assert.equal((await db.query('SELECT 1 FROM documents WHERE id=$1', [secondOtherId])).rows.length, 0);
+    });
+
+    // 8. Non-admin cannot insert or delete OTHER documents
+    await asRole('anon', false, async () => {
+      const anonDocId = '00000000-0000-4000-8000-000000000044';
+      await assert.rejects(
+        db.query(
+          "INSERT INTO documents(id, event_id, name, type, mime_type) VALUES ($1, $2, 'Intento Anonimo', 'OTHER', 'application/pdf')",
+          [anonDocId, published]
+        )
+      );
     });
   });
 

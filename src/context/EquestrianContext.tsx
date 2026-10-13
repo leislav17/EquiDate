@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass, CompetitionArena, CompetitionStream } from '../types/equestrian';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import { documentAssociation, documentLabel } from '../utils/documents';
+import { documentAssociation, documentLabel, isGeneralDocumentType } from '../utils/documents';
 import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
 
 export interface DocumentPageInput {
@@ -25,6 +25,7 @@ interface EquestrianContextType {
   dataError: string | null;
   scheduleError: string | null;
   saveClass: (entry: Omit<CompetitionClass, 'id'> & { id?: string }) => Promise<void>;
+  saveClasses: (entries: Array<Omit<CompetitionClass, 'id'>>) => Promise<void>;
   deleteClass: (id: string) => Promise<void>;
   documents: DocumentItem[];
   activeYear: number;
@@ -71,7 +72,7 @@ interface EquestrianContextType {
     newFile?: File | Blob,
     newPages?: DocumentPageInput[]
   ) => Promise<void>;
-  deleteDocument: (id: string) => Promise<void>;
+  deleteDocument: (id: string) => Promise<{ success: boolean; storageError?: string }>;
   reorderDocument: (id: string, direction: 'up' | 'down') => Promise<void>;
 
   // Query helpers
@@ -335,41 +336,113 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const uploadFile = async (eventId: string, file: File | Blob, mimeType: string) => {
-    const extension = mimeType === 'application/pdf' ? 'pdf' : mimeType.split('/')[1]?.replace(/[^a-z0-9]/g, '') || 'bin';
-    const path = 'events/' + eventId + '/' + crypto.randomUUID() + '.' + extension;
-    const { error } = await supabase.storage.from(BUCKET_NAME).upload(path, file, { contentType: mimeType, upsert: false });
-    if (error) throw error;
-    return path;
+    if (file.size === 0) {
+      throw new Error('El archivo seleccionado está vacío.');
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      throw new Error('El archivo supera el tamaño máximo permitido (25 MB).');
+    }
+
+    const fileName = (file instanceof File ? file.name : '').toLowerCase();
+    const isPdf =
+      fileName.endsWith('.pdf') ||
+      mimeType.toLowerCase() === 'application/pdf' ||
+      mimeType.toLowerCase().includes('pdf') ||
+      (file instanceof File && file.type.toLowerCase().includes('pdf'));
+
+    const effectiveMime = isPdf
+      ? 'application/pdf'
+      : (mimeType || (file instanceof File ? file.type : '') || 'image/jpeg');
+    const extension = isPdf ? 'pdf' : (effectiveMime.split('/')[1]?.replace(/[^a-z0-9]/g, '') || 'jpg');
+    const path = `events/${eventId}/${crypto.randomUUID()}.${extension}`;
+
+    const { error } = await supabase.storage.from(BUCKET_NAME).upload(path, file, {
+      contentType: effectiveMime,
+      upsert: false,
+    });
+    if (error) {
+      throw new Error(`Error al subir archivo a Storage: ${error.message}`);
+    }
+    return { path, mimeType: effectiveMime };
   };
+
   const saveDocument = async (entry: DocumentItem, file?: File | Blob, pages?: DocumentPageInput[]) => {
     requireAdmin();
     const association = documentAssociation(entry.type, entry.classId, entry.eventId, classes);
-    entry = { ...entry, ...association, name: documentLabel({ ...entry, ...association }, classes) };
+    const computedName = entry.type === 'OTHER'
+      ? (entry.name || '').trim()
+      : documentLabel({ ...entry, ...association }, classes);
+
+    if (entry.type === 'OTHER' && !computedName) {
+      throw new Error('El nombre del documento es obligatorio.');
+    }
+
+    entry = { ...entry, ...association, name: computedName };
+
     let path = entry.storagePath || entry.documentPages?.[0]?.storagePath || null;
     let mimeType = entry.mimeType;
     let pagePayload: { storage_path: string; mime_type: string; sort_order: number }[] | null = null;
-    if (pages?.length) {
-      pagePayload = [];
-      for (const [index, page] of pages.entries()) {
-        if (!page.file) throw new Error('Seleccioná un archivo para cada página.');
-        const storagePath = await uploadFile(entry.eventId, page.file, page.mimeType);
-        pagePayload.push({ storage_path: storagePath, mime_type: page.mimeType, sort_order: index + 1 });
+    const newlyUploadedPaths: string[] = [];
+
+    try {
+      if (pages?.length) {
+        pagePayload = [];
+        for (const [index, page] of pages.entries()) {
+          if (!page.file) throw new Error('Seleccioná un archivo para cada página.');
+          const { path: storagePath, mimeType: pageMime } = await uploadFile(entry.eventId, page.file, page.mimeType);
+          newlyUploadedPaths.push(storagePath);
+          pagePayload.push({ storage_path: storagePath, mime_type: pageMime, sort_order: index + 1 });
+        }
+        path = pagePayload[0].storage_path;
+        mimeType = pagePayload[0].mime_type;
+      } else if (file) {
+        const isPdf =
+          (file instanceof File && file.name.toLowerCase().endsWith('.pdf')) ||
+          (entry.mimeType && entry.mimeType.toLowerCase().includes('pdf')) ||
+          (file instanceof File && file.type && file.type.toLowerCase().includes('pdf'));
+        const targetMime = isPdf
+          ? 'application/pdf'
+          : (file instanceof File && file.type ? file.type : entry.mimeType || 'application/pdf');
+        const uploadResult = await uploadFile(entry.eventId, file, targetMime);
+        path = uploadResult.path;
+        mimeType = uploadResult.mimeType;
+        newlyUploadedPaths.push(path);
+        pagePayload = [{ storage_path: path, mime_type: mimeType, sort_order: 1 }];
       }
-      path = pagePayload[0].storage_path; mimeType = pagePayload[0].mime_type;
-    } else if (file) {
-      mimeType = file.type || entry.mimeType;
-      path = await uploadFile(entry.eventId, file, mimeType);
-      pagePayload = [];
+
+      if (!path) throw new Error('Seleccioná un archivo.');
+
+      const { error } = await supabase.rpc('equidate_save_document', {
+        payload: {
+          id: entry.id,
+          event_id: entry.eventId,
+          name: entry.name,
+          type: entry.type,
+          event_date: entry.eventDate,
+          class_id: entry.classId || null,
+          storage_path: path,
+          mime_type: mimeType,
+          sort_order: entry.order,
+        },
+        page_payload: pagePayload,
+      });
+
+      if (error) {
+        throw new Error(`Error al guardar documento en base de datos: ${error.message}`);
+      }
+
+      await refreshData();
+    } catch (err) {
+      // Limpiar ÚNICAMENTE los archivos recién subidos de este intento fallido
+      if (newlyUploadedPaths.length > 0) {
+        try {
+          await supabase.storage.from(BUCKET_NAME).remove(newlyUploadedPaths);
+        } catch (cleanupErr) {
+          console.warn('Error al limpiar archivos en intento fallido:', cleanupErr);
+        }
+      }
+      throw err;
     }
-    if (!path) throw new Error('Seleccioná un archivo.');
-    const { error } = await supabase.rpc('equidate_save_document', {
-      payload: { id: entry.id, event_id: entry.eventId, name: entry.name,
-        type: entry.type, event_date: entry.eventDate, class_id: entry.classId || null,
-        storage_path: path, mime_type: mimeType, sort_order: entry.order },
-      page_payload: pagePayload,
-    });
-    if (error) throw error;
-    await refreshData();
   };
   const addDocument: EquestrianContextType['addDocument'] = async (entry, file, pages) => {
     const order = Math.max(0, ...documents.filter(doc => doc.eventId === entry.eventId).map(doc => doc.order)) + 1;
@@ -384,11 +457,19 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
     const payload: Record<string, unknown> = {};
-    if ('type' in updates || 'classId' in updates || 'eventDate' in updates) {
+    if ('type' in updates || 'classId' in updates || 'eventDate' in updates || 'name' in updates) {
       const merged = { ...entry, ...updates };
-      updates = { ...updates, ...documentAssociation(merged.type, merged.classId, entry.eventId, classes) };
+      const association = documentAssociation(merged.type, merged.classId, entry.eventId, classes);
+      const computedName = merged.type === 'OTHER'
+        ? (merged.name || '').trim()
+        : documentLabel({ type: merged.type, classId: association.classId }, classes);
+
+      if (merged.type === 'OTHER' && !computedName) {
+        throw new Error('El nombre del documento es obligatorio.');
+      }
+      updates = { ...updates, ...association, name: computedName };
     }
-    const fields = { type: 'type', eventDate: 'event_date', classId: 'class_id', order: 'sort_order' };
+    const fields = { name: 'name', type: 'type', eventDate: 'event_date', classId: 'class_id', order: 'sort_order' };
     for (const [key, column] of Object.entries(fields)) {
       if (key in updates) payload[column] = updates[key as keyof DocumentItem] ?? null;
     }
@@ -396,13 +477,86 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (error) throw error;
     await refreshData();
   };
-  const deleteDocument = async (id: string) => {
+  const deleteDocument: EquestrianContextType['deleteDocument'] = async (id: string) => {
     requireAdmin();
-    const { error } = await supabase.from('documents').delete().eq('id', id).select('id').single();
-    if (error) throw error;
+    const docToDelete = documents.find(d => d.id === id);
+    if (!docToDelete) throw new Error('Documento no encontrado.');
+
+    // 1. Recopilar candidatos de rutas de almacenamiento exclusivas antes de eliminar
+    const docPages = docToDelete.documentPages || [];
+    const candidatePaths = new Set<string>();
+    if (docToDelete.storagePath) candidatePaths.add(docToDelete.storagePath);
+    for (const p of docPages) {
+      if (p.storagePath) candidatePaths.add(p.storagePath);
+    }
+
+    const otherDocs = documents.filter(d => d.id !== id);
+    const otherPaths = new Set<string>();
+    for (const od of otherDocs) {
+      if (od.storagePath) otherPaths.add(od.storagePath);
+      for (const op of od.documentPages || []) {
+        if (op.storagePath) otherPaths.add(op.storagePath);
+      }
+    }
+
+    const fallbackExclusivePaths = Array.from(candidatePaths).filter(p => !otherPaths.has(p));
+
+    let deletedStoragePaths: string[] = fallbackExclusivePaths;
+    let rpcSuccess = false;
+
+    // 2. Intentar primero con la función RPC atómica equidate_delete_document
+    try {
+      const { data, error } = await supabase.rpc('equidate_delete_document', { target_id: id });
+      if (!error && data && data.success) {
+        rpcSuccess = true;
+        if (Array.isArray(data.deleted_storage_paths)) {
+          deletedStoragePaths = data.deleted_storage_paths;
+        }
+      } else if (error) {
+        if (error.code === '42501' || error.message?.includes('Permisos')) {
+          throw new Error('No tenés permisos de administrador para eliminar este documento.');
+        }
+        console.warn('RPC equidate_delete_document falló o no existe aún, usando borrado directo:', error.message);
+      }
+    } catch (rpcErr) {
+      if ((rpcErr as Error).message?.includes('permisos') || (rpcErr as Error).message?.includes('Permisos')) {
+        throw rpcErr;
+      }
+    }
+
+    if (!rpcSuccess) {
+      // Eliminar páginas asociadas primero para respetar integridad
+      await supabase.from('document_pages').delete().eq('document_id', id);
+      // Eliminar documento de la base de datos
+      const { error: deleteError } = await supabase.from('documents').delete().eq('id', id);
+      if (deleteError) {
+        throw new Error(`Error al eliminar documento: ${deleteError.message}`);
+      }
+    }
+
+    // 3. Limpiar ÚNICAMENTE archivos de Storage que no estén compartidos con otros documentos
+    let storageErrorMsg: string | undefined = undefined;
+    if (deletedStoragePaths.length > 0) {
+      try {
+        const { error: storageError } = await supabase.storage.from(BUCKET_NAME).remove(deletedStoragePaths);
+        if (storageError) {
+          storageErrorMsg = storageError.message;
+          console.warn('Documento eliminado de la base de datos, pero falló la limpieza de Storage:', storageError.message);
+        }
+      } catch (stErr) {
+        storageErrorMsg = (stErr as Error).message;
+        console.warn('Excepción al limpiar archivos de Storage:', stErr);
+      }
+    }
+
+    // 4. Cerrar visores si estaba abierto este documento
     if (activeViewerDoc?.id === id) setActiveViewerDoc(null);
     if (viewingDocumentId === id) setViewingDocumentId(null);
+
+    // 5. Refrescar estado completo
     await refreshData();
+
+    return { success: true, storageError: storageErrorMsg };
   };
   const reorderDocument: EquestrianContextType['reorderDocument'] = async (id, direction) => {
     requireAdmin();
@@ -429,6 +583,49 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ? await supabase.from('competition_classes').update(payload).eq('id', entry.id).select('id').single()
       : await supabase.from('competition_classes').insert(payload).select('id').single();
     if (response.error) throw response.error;
+    await refreshData();
+  };
+  const saveClasses: EquestrianContextType['saveClasses'] = async entries => {
+    requireAdmin();
+    if (arenaError) throw new Error(arenaError);
+    if (!entries.length) return;
+
+    // Validate all items before inserting anything
+    for (const entry of entries) {
+      if (!entry.number.trim()) throw new Error('Ingresá el número de la prueba.');
+      if (!entry.name.trim()) throw new Error('Ingresá el nombre de la prueba.');
+      const arena = arenas.find(item => item.id === entry.arenaId && item.eventId === entry.eventId);
+      if (!arena) throw new Error('Seleccioná una pista válida para cada prueba.');
+    }
+
+    // Ensure all target competition days exist
+    const dayIdMap = new Map<string, string>();
+    for (const entry of entries) {
+      const key = `${entry.eventId}_${entry.date}`;
+      if (!dayIdMap.has(key)) {
+        const dayId = await ensureDay(entry.eventId, entry.date);
+        dayIdMap.set(key, dayId);
+      }
+    }
+
+    // Build payload array for atomic single-statement batch insert
+    const payloadArray = entries.map(entry => {
+      const dayId = dayIdMap.get(`${entry.eventId}_${entry.date}`);
+      return {
+        day_id: dayId!,
+        arena_id: entry.arenaId,
+        event_id: entry.eventId,
+        event_date: entry.date,
+        start_time: entry.time || null,
+        number: entry.number.trim(),
+        name: entry.name.trim(),
+        description: entry.description.trim(),
+        sort_order: entry.order,
+      };
+    });
+
+    const { error } = await supabase.from('competition_classes').insert(payloadArray).select('id');
+    if (error) throw error;
     await refreshData();
   };
   const deleteClass = async (id: string) => {
@@ -478,7 +675,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const namedDocuments = documents.map(doc => ({ ...doc, name: documentLabel(doc, classes) }));
 
   return <EquestrianContext.Provider value={{
-    events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, deleteClass,
+    events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,

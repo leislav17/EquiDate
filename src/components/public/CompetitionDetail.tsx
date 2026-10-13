@@ -41,6 +41,16 @@ export const CompetitionDetail: React.FC = () => {
     return allDocs.filter((d) => d.type === 'PROGRAM');
   }, [allDocs]);
 
+  // Reglamentos (type === 'REGULATION')
+  const reglamentos = useMemo(() => {
+    return allDocs.filter((d) => d.type === 'REGULATION');
+  }, [allDocs]);
+
+  // Otros Documentos Generales (type === 'OTHER')
+  const otrosDocumentos = useMemo(() => {
+    return allDocs.filter((d) => d.type === 'OTHER');
+  }, [allDocs]);
+
   // Accordion states for days
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
 
@@ -157,34 +167,23 @@ export const CompetitionDetail: React.FC = () => {
         </div>
 
         {scheduleError && <p role="status" className="mb-4 text-sm text-neutral-600">{scheduleError}</p>}
-        {allDocs.filter(doc => doc.type !== 'PROGRAM' && (!doc.eventDate || doc.eventDate < event.startDate || doc.eventDate > event.endDate)).length > 0 && <section className="mb-4 p-4 bg-white border rounded-xl">
-          <h2 className="font-bold text-sm text-[#123E59] mb-2">Otros documentos del concurso</h2>
-          {allDocs.filter(doc => doc.type !== 'PROGRAM' && (!doc.eventDate || doc.eventDate < event.startDate || doc.eventDate > event.endDate)).map(doc => <button key={doc.id} onClick={() => handleOpenDoc(doc)} className="block min-h-11 text-sm underline text-[#123E59]">{doc.name}</button>)}
-        </section>}
-        {/* Content Hierarchy: ANTEPROGRAMA -> DÍAS */}
+        {/* Content Hierarchy: ANTEPROGRAMA -> REGLAMENTO -> OTROS DOCUMENTOS -> DÍAS */}
         <div className="space-y-3">
           {/* ======================================================== */}
-          {/* 1. ANTEPROGRAMA ACCESOS DIRECTOS (↗)                    */}
+          {/* 1. DOCUMENTOS GENERALES (Solo si existen)                */}
           {/* ======================================================== */}
-          {anteprogramas.length === 0 ? (
-            <div className="w-full px-5 py-4 bg-white rounded-xl border border-neutral-200 text-neutral-400 flex items-center justify-between text-xs sm:text-sm font-bold min-h-[56px]">
-              <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-neutral-400" />
-                <span>ANTEPROGRAMA</span>
-              </div>
-              <span className="text-[11px] font-normal italic">Aún no disponible</span>
-            </div>
-          ) : anteprogramas.length === 1 ? (
-            /* Single Anteprograma Row with ↗ in Petrol Blue */
+          {/* Anteprogramas */}
+          {anteprogramas.map((doc, idx) => (
             <button
+              key={doc.id}
               type="button"
-              onClick={() => handleOpenDoc(anteprogramas[0])}
+              onClick={() => handleOpenDoc(doc)}
               className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <FileText className="w-5 h-5 text-[#93c5fd] shrink-0" />
                 <span className="font-display text-base sm:text-lg font-black tracking-wide truncate">
-                  ANTEPROGRAMA OFICIAL
+                  {anteprogramas.length > 1 ? `ANTEPROGRAMA (${doc.name})` : 'ANTEPROGRAMA'}
                 </span>
               </div>
 
@@ -197,42 +196,59 @@ export const CompetitionDetail: React.FC = () => {
                 </div>
               </div>
             </button>
-          ) : (
-            /* Multiple Anteprogramas */
-            <div className="space-y-2">
-              {anteprogramas.map((doc, idx) => (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={() => handleOpenDoc(doc)}
-                  className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <FileText className="w-5 h-5 text-[#93c5fd] shrink-0" />
-                    <div className="text-left min-w-0">
-                      <span className="font-display text-base sm:text-lg font-black tracking-wide block truncate">
-                        ANTEPROGRAMA {idx > 0 ? `(${doc.name})` : 'OFICIAL'}
-                      </span>
-                      {idx > 0 && (
-                        <span className="text-[10px] text-white/70 font-mono">
-                          Versión complementaria
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          ))}
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-white/80 font-medium hidden sm:inline">
-                      Ver documento
-                    </span>
-                    <div className="w-8 h-8 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center transition-colors">
-                      <ArrowUpRight className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Reglamentos */}
+          {reglamentos.map((doc, idx) => (
+            <button
+              key={doc.id}
+              type="button"
+              onClick={() => handleOpenDoc(doc)}
+              className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="w-5 h-5 text-[#93c5fd] shrink-0" />
+                <span className="font-display text-base sm:text-lg font-black tracking-wide truncate">
+                  {reglamentos.length > 1 ? `REGLAMENTO (${doc.name})` : 'REGLAMENTO'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-white/80 font-medium hidden sm:inline">
+                  Ver documento
+                </span>
+                <div className="w-8 h-8 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center transition-colors">
+                  <ArrowUpRight className="w-5 h-5 text-white" />
+                </div>
+              </div>
+            </button>
+          ))}
+
+          {/* Otros Documentos Generales (con nombre personalizado) */}
+          {otrosDocumentos.map((doc) => (
+            <button
+              key={doc.id}
+              type="button"
+              onClick={() => handleOpenDoc(doc)}
+              className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="w-5 h-5 text-[#93c5fd] shrink-0" />
+                <span className="font-display text-base sm:text-lg font-black tracking-wide truncate">
+                  {doc.name}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-white/80 font-medium hidden sm:inline">
+                  Ver documento
+                </span>
+                <div className="w-8 h-8 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center transition-colors">
+                  <ArrowUpRight className="w-5 h-5 text-white" />
+                </div>
+              </div>
+            </button>
+          ))}
 
           {/* ======================================================== */}
           {/* 2. AUTOMATIC ACCORDION FOR EACH DAY                     */}
@@ -271,14 +287,7 @@ export const CompetitionDetail: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-neutral-500 font-mono hidden sm:inline">
-                      {hasResults
-                        ? 'Listados y Resultados'
-                        : hasStartLists
-                        ? 'Listados disponibles'
-                        : 'Sin documentos'}
-                    </span>
+                  <div className="flex items-center">
                     {isOpen ? (
                       <ChevronUp className="w-5 h-5 text-neutral-500" />
                     ) : (

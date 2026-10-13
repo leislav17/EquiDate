@@ -4,7 +4,7 @@ import {
   DocumentItem,
   DocumentType
 } from '../../types/equestrian';
-import { documentLabel } from '../../utils/documents';
+import { documentLabel, documentTypeLabel, isGeneralDocumentType } from '../../utils/documents';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { getDaysBetween, formatDayHeader } from '../../utils/dateUtils';
 import {
@@ -72,6 +72,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   // New doc fields
   const [docType, setDocType] = useState<DocumentType>('PROGRAM');
   const [docClass, setDocClass] = useState('');
+  const [customDocName, setCustomDocName] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Multi-page image items
@@ -81,18 +82,48 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const [pdfName, setPdfName] = useState<string>('');
 
   const [formError, setFormError] = useState<string>('');
+  const [saveProgress, setSaveProgress] = useState<string>('');
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Deletion modal state
+  const [documentToDelete, setDocumentToDelete] = useState<DocumentItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string>('');
+  const [storageWarning, setStorageWarning] = useState<string>('');
 
   if (!isOpen) return null;
 
   const handleTypeChange = (newType: DocumentType) => {
     setDocType(newType);
-    setDocClass('');
-
+    if (isGeneralDocumentType(newType)) {
+      setDocClass('');
+    }
+    if (newType !== 'OTHER') {
+      setCustomDocName('');
+    }
   };
 
-  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const handleConfirmDelete = async () => {
+    if (!documentToDelete) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    setStorageWarning('');
+    try {
+      const result = await deleteDocument(documentToDelete.id);
+      if (result && result.storageError) {
+        setStorageWarning(`El documento se eliminó de la base de datos, pero falló la limpieza de algunos archivos en Storage: ${result.storageError}`);
+      } else {
+        setDocumentToDelete(null);
+      }
+    } catch (err) {
+      setDeleteError((err as Error).message || 'No se pudo eliminar el documento.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const processSelectedFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setFormError('');
 
@@ -102,6 +133,14 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     );
 
     if (pdf) {
+      if (pdf.size === 0) {
+        setFormError('El archivo PDF seleccionado está vacío.');
+        return;
+      }
+      if (pdf.size > 25 * 1024 * 1024) {
+        setFormError('El archivo PDF supera el tamaño máximo permitido (25 MB).');
+        return;
+      }
       setPdfFile(pdf);
       setPdfName(pdf.name);
       setPageItems([]);
@@ -126,6 +165,10 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     const loaded: PageItem[] = [];
     for (let i = 0; i < imageFiles.length; i++) {
       const f = imageFiles[i];
+      if (f.size > 25 * 1024 * 1024) {
+        setFormError(`La imagen ${f.name} supera el tamaño máximo permitido (25 MB).`);
+        return;
+      }
       const dataUrl = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
@@ -143,7 +186,12 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     }
 
     setPageItems((prev) => [...prev, ...loaded]);
+  };
+
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    await processSelectedFiles(files);
   };
 
   const handleMovePage = (index: number, direction: 'up' | 'down') => {
@@ -164,8 +212,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
   const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isGeneralDoc = isGeneralDocumentType(docType);
+    if (docType === 'OTHER' && !customDocName.trim()) {
+      setFormError('Ingresá el nombre del documento.');
+      return;
+    }
     const selectedClass = classes.find(entry => entry.id === docClass && entry.eventId === event.id);
-    if (docType !== 'PROGRAM' && !selectedClass) {
+    if (!isGeneralDoc && !selectedClass) {
       setFormError('Seleccioná la prueba a la que pertenece el documento.');
       return;
     }
@@ -175,52 +228,64 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
       return;
     }
 
+    const finalDocName = docType === 'OTHER'
+      ? customDocName.trim()
+      : documentLabel({ type: docType, classId: isGeneralDoc ? null : docClass }, classes);
+
     setSaving(true);
+    setSaveProgress(pdfFile ? 'Subiendo documento PDF...' : 'Subiendo páginas...');
     setFormError('');
     try {
-    if (pdfFile) {
-      await addDocument(
-        {
-          eventId: event.id,
-          classId: docClass || null,
-          name: documentLabel({ type: docType, classId: docClass }, classes),
-          type: docType,
-          eventDate: docType === 'PROGRAM' ? null : selectedClass!.date,
-          fileUrl: '',
-          mimeType: 'application/pdf',
-        },
-        pdfFile
-      );
-    } else {
-      await addDocument(
-        {
-          eventId: event.id,
-          classId: docClass || null,
-          name: documentLabel({ type: docType, classId: docClass }, classes),
-          type: docType,
-          eventDate: docType === 'PROGRAM' ? null : selectedClass!.date,
-          fileUrl: pageItems[0]?.dataUrl || '',
-          mimeType: pageItems[0]?.mimeType || 'image/jpeg',
-        },
-        undefined,
-        pageItems.map((p) => ({
-          file: p.file,
-          dataUrl: p.dataUrl,
-          name: p.name,
-          mimeType: p.mimeType,
-        }))
-      );
-    }
+      if (pdfFile) {
+        await addDocument(
+          {
+            eventId: event.id,
+            classId: isGeneralDoc ? null : (docClass || null),
+            name: finalDocName,
+            type: docType,
+            eventDate: isGeneralDoc ? null : selectedClass!.date,
+            fileUrl: '',
+            mimeType: 'application/pdf',
+          },
+          pdfFile
+        );
+      } else {
+        setSaveProgress(`Subiendo ${pageItems.length} página(s)...`);
+        await addDocument(
+          {
+            eventId: event.id,
+            classId: isGeneralDoc ? null : (docClass || null),
+            name: finalDocName,
+            type: docType,
+            eventDate: isGeneralDoc ? null : selectedClass!.date,
+            fileUrl: pageItems[0]?.dataUrl || '',
+            mimeType: pageItems[0]?.mimeType || 'image/jpeg',
+          },
+          undefined,
+          pageItems.map((p) => ({
+            file: p.file,
+            dataUrl: p.dataUrl,
+            name: p.name,
+            mimeType: p.mimeType,
+          }))
+        );
+      }
 
-    // Reset form
-    setIsAdding(false);
-    setPageItems([]);
-    setPdfFile(null);
-    setPdfName('');
-    setDocClass('');
-    setFormError('');
-    } catch (error) { setFormError((error as Error).message || 'No se pudo guardar.'); }
-    finally { setSaving(false); }
+      // Reset form
+      setIsAdding(false);
+      setPageItems([]);
+      setPdfFile(null);
+      setPdfName('');
+      setDocClass('');
+      setCustomDocName('');
+      setFormError('');
+      setSaveProgress('');
+    } catch (error) {
+      setFormError((error as Error).message || 'No se pudo guardar.');
+    } finally {
+      setSaving(false);
+      setSaveProgress('');
+    }
   };
 
   const runAction = (action: Promise<unknown>) => { void action.catch(error => setFormError(error.message || 'No se pudo guardar.')); };
@@ -298,7 +363,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
                     Tipo de documento *
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                     <button
                       type="button"
                       onClick={() => handleTypeChange('PROGRAM')}
@@ -309,6 +374,28 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       }`}
                     >
                       Anteprograma
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange('REGULATION')}
+                      className={`py-2 px-2 text-xs font-bold rounded-lg border text-center transition-all cursor-pointer ${
+                        docType === 'REGULATION'
+                          ? 'bg-neutral-900 text-white border-neutral-900'
+                          : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                      }`}
+                    >
+                      Reglamento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange('OTHER')}
+                      className={`py-2 px-2 text-xs font-bold rounded-lg border text-center transition-all cursor-pointer ${
+                        docType === 'OTHER'
+                          ? 'bg-neutral-900 text-white border-neutral-900'
+                          : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                      }`}
+                    >
+                      Otro documento
                     </button>
                     <button
                       type="button"
@@ -335,13 +422,39 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   </div>
                 </div>
 
-                {docType === 'PROGRAM' ? <p className="text-sm text-neutral-600">El anteprograma se asocia al concurso completo.</p> : <label className="block text-sm font-bold">Prueba del documento
-                  <select required aria-label="Prueba del documento" value={docClass} onChange={form => setDocClass(form.target.value)} className="block w-full p-3 border rounded-lg mt-1 text-sm">
-                    <option value="" disabled>Seleccioná una prueba</option>
-                    {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
-                  </select>
-                  {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde el botón Pruebas del concurso.</span>}
-                </label>}
+                {docType === 'OTHER' ? (
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 mb-1">
+                      Nombre del documento *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customDocName}
+                      onChange={e => { setCustomDocName(e.target.value); setFormError(''); }}
+                      placeholder="Ej: Información para participantes, Estabulación..."
+                      className="w-full p-2.5 bg-white border border-neutral-300 rounded-lg text-xs font-semibold text-neutral-900 focus:outline-hidden focus:border-[#123E59]"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Asociado al concurso general con nombre personalizado.
+                    </p>
+                  </div>
+                ) : docType === 'PROGRAM' || docType === 'REGULATION' ? (
+                  <p className="text-sm text-neutral-600">
+                    {docType === 'PROGRAM'
+                      ? 'El anteprograma se asocia al concurso completo.'
+                      : 'El reglamento se asocia al concurso completo.'}
+                  </p>
+                ) : (
+                  <label className="block text-sm font-bold">
+                    Prueba del documento
+                    <select required aria-label="Prueba del documento" value={docClass} onChange={form => setDocClass(form.target.value)} className="block w-full p-3 border rounded-lg mt-1 text-sm">
+                      <option value="" disabled>Seleccioná una prueba</option>
+                      {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
+                    </select>
+                    {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde el botón Pruebas del concurso.</span>}
+                  </label>
+                )}
 
                 {/* 4. ARCHIVO O PÁGINAS MULTIPÁGINA */}
                 <div className="space-y-3">
@@ -352,7 +465,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,image/jpeg,image/png,image/webp,image/svg+xml"
+                    accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,image/svg+xml"
                     onChange={handleFilesSelected}
                     className="hidden"
                   />
@@ -369,7 +482,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                             {pdfName || pdfFile.name}
                           </p>
                           <p className="text-[10px] text-neutral-500">
-                            Documento PDF oficial listo para visualización y descarga
+                            Documento PDF oficial listo para visualización y descarga ({Math.round(pdfFile.size / 1024)} KB)
                           </p>
                         </div>
                       </div>
@@ -379,7 +492,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                           setPdfFile(null);
                           setPdfName('');
                         }}
-                        className="p-1.5 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-neutral-100 transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
                         title="Quitar PDF"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -469,11 +582,26 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                   {!pdfFile && pageItems.length === 0 && (
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-neutral-300 hover:border-neutral-900 rounded-xl p-5 text-center cursor-pointer bg-white transition-colors"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingOver(true);
+                      }}
+                      onDragLeave={() => setIsDraggingOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingOver(false);
+                        const files = Array.from(e.dataTransfer.files);
+                        void processSelectedFiles(files);
+                      }}
+                      className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
+                        isDraggingOver
+                          ? 'border-[#123E59] bg-[#123E59]/5'
+                          : 'border-neutral-300 hover:border-neutral-900 bg-white'
+                      }`}
                     >
                       <Upload className="w-6 h-6 text-neutral-400 mx-auto mb-1.5" />
                       <p className="text-xs font-bold text-neutral-800">
-                        Hacé clic para seleccionar páginas o archivo
+                        Hacé clic o arrastrá para seleccionar páginas o archivo
                       </p>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         Podés seleccionar múltiples imágenes a la vez (JPG, PNG, WebP) o un archivo PDF
@@ -486,21 +614,31 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
 
                 </div>
 
+                {/* Save Progress Indicator */}
+                {saving && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[#123E59]/10 text-[#123E59] text-xs font-bold">
+                    <div className="w-4 h-4 border-2 border-[#123E59] border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>{saveProgress || 'Guardando documento...'}</span>
+                  </div>
+                )}
+
                 {/* Form Buttons */}
                 <div className="pt-2 flex justify-end gap-2">
                   <button
                     type="button"
+                    disabled={saving}
                     onClick={() => setIsAdding(false)}
-                    className="px-3.5 py-1.5 text-xs font-bold text-neutral-600 hover:text-neutral-900 rounded-lg hover:bg-neutral-200 cursor-pointer"
+                    className="px-3.5 py-1.5 text-xs font-bold text-neutral-600 hover:text-neutral-900 rounded-lg hover:bg-neutral-200 cursor-pointer disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-4 py-1.5 text-xs font-bold text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg cursor-pointer"
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg cursor-pointer flex items-center gap-2"
                   >
-                    Guardar Documento
+                    {saving && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    <span>{saving ? 'Guardando...' : 'Guardar Documento'}</span>
                   </button>
                 </div>
               </form>
@@ -520,12 +658,12 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
             ) : (
               documents.map((doc, idx) => {
                 const isEditing = editingDocId === doc.id;
-                const typeLabel =
-                  doc.type === 'PROGRAM'
-                    ? 'Anteprograma'
-                    : doc.type === 'START_LIST'
-                    ? 'Listado'
-                    : 'Resultado';
+                const typeLabel = documentTypeLabel(doc.type);
+                const isDocPdf =
+                  doc.mimeType?.toLowerCase() === 'application/pdf' ||
+                  doc.fileUrl?.toLowerCase().endsWith('.pdf') ||
+                  doc.fileUrl?.toLowerCase().includes('.pdf?') ||
+                  doc.storagePath?.toLowerCase().endsWith('.pdf');
 
                 const dayLabel = doc.eventDate
                   ? formatDayHeader(doc.eventDate).fullFormatted
@@ -544,7 +682,12 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                         className="w-10 h-12 rounded border border-neutral-200 overflow-hidden bg-neutral-100 flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
                         title="Ver en visor dedicado"
                       >
-                        {doc.fileUrl ? (
+                        {isDocPdf ? (
+                          <div className="w-full h-full bg-red-50 text-red-600 flex flex-col items-center justify-center p-1">
+                            <FileText className="w-5 h-5 text-red-500" />
+                            <span className="text-[9px] font-black tracking-tighter uppercase">PDF</span>
+                          </div>
+                        ) : doc.fileUrl ? (
                           <img
                             src={doc.fileUrl}
                             alt=""
@@ -614,9 +757,14 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => { if (window.confirm('¿Eliminar este documento?')) runAction(deleteDocument(doc.id)); }}
+                        disabled={isDeleting}
+                        onClick={() => {
+                          setDocumentToDelete(doc);
+                          setDeleteError('');
+                          setStorageWarning('');
+                        }}
                         title="Eliminar documento"
-                        className="p-1.5 text-red-500 hover:text-red-700 rounded hover:bg-red-50 transition-colors cursor-pointer"
+                        className="p-1.5 text-red-500 hover:text-red-700 rounded hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -639,31 +787,212 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de confirmación de eliminación */}
+      {documentToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-neutral-200 space-y-4">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-neutral-900">¿Eliminar este documento?</h3>
+                <p className="text-xs text-neutral-500">Esta acción no se puede deshacer.</p>
+              </div>
+            </div>
+
+            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 text-xs space-y-1">
+              <p className="font-extrabold text-neutral-900 text-sm truncate">{documentToDelete.name}</p>
+              <p className="text-neutral-600">
+                Tipo: <span className="font-semibold text-neutral-800">{documentTypeLabel(documentToDelete.type)}</span>
+                {isGeneralDocumentType(documentToDelete.type) ? ' · General del concurso' : ''}
+              </p>
+              <p className="text-[11px] text-neutral-500">
+                Se eliminará exclusivamente este documento y sus páginas asociadas. No afectará las pruebas ni el concurso.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-lg bg-red-100 text-red-800 text-xs font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            {storageWarning && (
+              <div className="p-3 rounded-lg bg-amber-100 text-amber-800 text-xs font-semibold">
+                {storageWarning}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => { setDocumentToDelete(null); setDeleteError(''); setStorageWarning(''); }}
+                className="px-4 py-2 text-xs font-bold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg cursor-pointer disabled:opacity-50"
+              >
+                {storageWarning ? 'Entendido / Cerrar' : 'Cancelar'}
+              </button>
+              {!storageWarning && (
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : deleteError ? (
+                    <span>Reintentar eliminación</span>
+                  ) : (
+                    <span>Confirmar eliminación</span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 function DocumentAssignment({ doc, onSaved }: { doc: DocumentItem; onSaved: () => void }) {
   const { classes, arenas, updateDocument } = useEquestrian();
-  const [type, setType] = useState(doc.type);
-  const [classId, setClassId] = useState(doc.classId || '');
+  const [type, setType] = useState<DocumentType>(doc.type);
+  const [classId, setClassId] = useState(isGeneralDocumentType(doc.type) ? '' : (doc.classId || ''));
+  const [customName, setCustomName] = useState<string>(doc.type === 'OTHER' ? doc.name : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  return <form className="space-y-2" onSubmit={async form => {
-    form.preventDefault(); setBusy(true); setError('');
-    try { await updateDocument(doc.id, { type, classId: type === 'PROGRAM' ? null : classId }); onSaved(); }
-    catch (error) { setError((error as Error).message); }
-    finally { setBusy(false); }
-  }}>
-    <label className="block text-xs">Tipo de documento<select className="w-full p-2 border rounded mt-1" value={type} onChange={form => setType(form.target.value as DocumentType)}>
-      <option value="PROGRAM">Anteprograma</option><option value="START_LIST">Listado</option><option value="RESULT">Resultados</option>
-    </select></label>
-    {type !== 'PROGRAM' && <label className="block text-xs">Prueba asociada<select required className="w-full p-2 border rounded mt-1" value={classId} onChange={form => setClassId(form.target.value)}>
-      <option value="" disabled>Seleccioná una prueba</option>
-      {classes.filter(entry => entry.eventId === doc.eventId).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === doc.eventId).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
-    </select></label>}
-    {type === 'PROGRAM' && <p className="text-xs text-neutral-500">General del concurso</p>}
-    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
-    <button disabled={busy} className="px-3 min-h-11 bg-[#123E59] text-white rounded-lg text-xs font-bold">Guardar asignación</button>
-  </form>;
+  const isGeneral = isGeneralDocumentType(type);
+
+  const handleTypeSelect = (newType: DocumentType) => {
+    setType(newType);
+    if (isGeneralDocumentType(newType)) {
+      setClassId('');
+    }
+    if (newType === 'OTHER' && !customName) {
+      setCustomName(doc.type === 'OTHER' ? doc.name : '');
+    }
+    setError('');
+  };
+
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={async form => {
+        form.preventDefault();
+        setBusy(true);
+        setError('');
+        try {
+          if (type === 'OTHER' && !customName.trim()) {
+            setError('Ingresá el nombre del documento.');
+            setBusy(false);
+            return;
+          }
+          const finalClassId = isGeneral ? null : classId;
+          const targetClass = !isGeneral ? classes.find(c => c.id === finalClassId && c.eventId === doc.eventId) : undefined;
+          if (!isGeneral && !targetClass) {
+            setError('Seleccioná la prueba a la que pertenece el documento.');
+            setBusy(false);
+            return;
+          }
+          const finalDocName = type === 'OTHER'
+            ? customName.trim()
+            : documentLabel({ type, classId: finalClassId }, classes);
+
+          await updateDocument(doc.id, {
+            type,
+            classId: finalClassId,
+            eventDate: isGeneral ? null : (targetClass?.date || null),
+            name: finalDocName,
+          });
+          onSaved();
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <label className="block text-xs font-bold text-neutral-700">
+        Tipo de documento
+        <select
+          className="w-full p-2 border border-neutral-300 rounded-lg mt-1 text-xs bg-white text-neutral-900"
+          value={type}
+          onChange={form => handleTypeSelect(form.target.value as DocumentType)}
+        >
+          <option value="PROGRAM">Anteprograma</option>
+          <option value="REGULATION">Reglamento</option>
+          <option value="OTHER">Otro documento</option>
+          <option value="START_LIST">Listado</option>
+          <option value="RESULT">Resultados</option>
+        </select>
+      </label>
+      {type === 'OTHER' && (
+        <label className="block text-xs font-bold text-neutral-700">
+          Nombre del documento *
+          <input
+            type="text"
+            required
+            value={customName}
+            onChange={e => { setCustomName(e.target.value); setError(''); }}
+            placeholder="Ej: Información para participantes"
+            className="w-full p-2 border border-neutral-300 rounded-lg mt-1 text-xs bg-white text-neutral-900"
+          />
+        </label>
+      )}
+      {!isGeneral ? (
+        <label className="block text-xs font-bold text-neutral-700">
+          Prueba asociada *
+          <select
+            required
+            className="w-full p-2 border border-neutral-300 rounded-lg mt-1 text-xs bg-white text-neutral-900"
+            value={classId}
+            onChange={form => { setClassId(form.target.value); setError(''); }}
+          >
+            <option value="" disabled>Seleccioná una prueba</option>
+            {classes.filter(entry => entry.eventId === doc.eventId).map(entry => (
+              <option key={entry.id} value={entry.id}>
+                {entry.date} · Prueba {entry.number} · {entry.name}
+                {arenas.filter(arena => arena.eventId === doc.eventId).length > 1
+                  ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name
+                  : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="text-xs text-neutral-500 font-medium">
+          {type === 'PROGRAM'
+            ? 'Asociado al concurso general (Anteprograma).'
+            : type === 'REGULATION'
+            ? 'Asociado al concurso general (Reglamento).'
+            : 'Asociado al concurso general con nombre personalizado.'}
+        </p>
+      )}
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      <div className="flex gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={busy}
+          className="px-3 min-h-9 bg-[#123E59] hover:bg-[#0e3247] text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+        >
+          {busy ? 'Guardando...' : 'Guardar asignación'}
+        </button>
+        <button
+          type="button"
+          onClick={onSaved}
+          disabled={busy}
+          className="px-3 min-h-9 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-xs font-semibold cursor-pointer"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
 }

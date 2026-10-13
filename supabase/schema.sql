@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('PROGRAM', 'START_LIST', 'RESULT')),
+  type TEXT NOT NULL CHECK (type IN ('PROGRAM', 'REGULATION', 'START_LIST', 'RESULT')),
   event_date DATE,
   storage_path TEXT,
   mime_type TEXT NOT NULL,

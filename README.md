@@ -19,10 +19,10 @@ No se leen ni escriben concursos/documentos en localStorage. Supabase Auth conse
 ## Base de datos y actualización
 
 Para una base existente, seguir [la guía de actualización](docs/ACTUALIZACION_SUPABASE.md).
-Si ya aplicaste la migración de jornadas, continuar con [la actualización de pistas](docs/ACTUALIZACION_PISTAS.md).
+Si ya aplicaste la migración de jornadas y pistas, ejecutar el script incremental `supabase/migrations/20261012_regulation_documents.sql` para habilitar el tipo Reglamento y asegurar la compatibilidad con PDFs en Storage.
 No volver a ejecutar `schema.sql` sobre una base existente.
 
-Para una instalación vacía: ejecutar `supabase/schema.sql`, después `supabase/migrations/20261005_competition_schedule.sql` y luego `supabase/migrations/20261006_arenas_streams.sql`.
+Para una instalación vacía: ejecutar en orden `supabase/schema.sql`, `supabase/migrations/20261005_competition_schedule.sql`, `supabase/migrations/20261006_arenas_streams.sql` y `supabase/migrations/20261012_regulation_documents.sql`.
 El esquema base ya incluye `document_pages`; no repetir la migración antigua de páginas.
 Crear una cuenta en Supabase Auth y habilitar `equidate_admin` en app_metadata según la guía antes de iniciar sesión.
 

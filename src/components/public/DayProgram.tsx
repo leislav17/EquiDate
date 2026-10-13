@@ -2,13 +2,13 @@ import React from 'react';
 import { Bell, Award } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { sortClasses } from '../../utils/schedule';
-import { documentTypeLabel } from '../../utils/documents';
+import { documentTypeLabel, isGeneralDocumentType } from '../../utils/documents';
 import { DocumentItem } from '../../types/equestrian';
 
 export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: string; arenaId?: string }) {
   const { classes, arenas, documents, setViewingDocumentId } = useEquestrian();
   const entries = sortClasses(classes.filter(entry => entry.eventId === eventId && entry.date === date && (!arenaId || entry.arenaId === arenaId)));
-  const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && doc.type !== 'PROGRAM');
+  const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type));
   const unassigned = arenaId ? [] : dayDocuments.filter(doc => !doc.classId);
   const eventArenas = arenas.filter(arena => arena.eventId === eventId);
   const action = (doc: DocumentItem) => <button key={doc.id} title={doc.name} onClick={() => setViewingDocumentId(doc.id)}

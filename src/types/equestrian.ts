@@ -2,7 +2,7 @@ export type EventStatus = 'draft' | 'published';
 
 export type EventTemporalStatus = 'ACTUAL' | 'PROXIMO' | 'FINALIZADO';
 
-export type DocumentType = 'PROGRAM' | 'START_LIST' | 'RESULT';
+export type DocumentType = 'PROGRAM' | 'REGULATION' | 'OTHER' | 'START_LIST' | 'RESULT';
 
 export interface DocumentPage {
   id: string;

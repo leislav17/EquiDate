@@ -78,6 +78,8 @@ export interface CompetitionClass {
   name: string;
   description: string;
   order: number;
+  isApproximate?: boolean;
+  isContinuous?: boolean;
 }
 
 export interface CompetitionArena {
@@ -85,6 +87,7 @@ export interface CompetitionArena {
   eventId: string;
   name: string;
   isPrimary: boolean;
+  order?: number;
 }
 
 export interface CompetitionStream {

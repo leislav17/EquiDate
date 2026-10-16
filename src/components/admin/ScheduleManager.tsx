@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { X, Plus, Pencil, Trash2, Copy } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, Copy, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import { EquestrianEvent, CompetitionClass } from '../../types/equestrian';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { getDaysBetween, formatDayHeader } from '../../utils/dateUtils';
-import { DEFAULT_TIME_ZONE, sortClasses } from '../../utils/schedule';
+import { DEFAULT_TIME_ZONE, sortClasses, sortArenas, formatClassSchedule } from '../../utils/schedule';
 import { DayProgram } from '../public/DayProgram';
 
 const field = 'block w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mt-1 bg-white min-h-11';
@@ -22,33 +22,72 @@ function ManagerDialog({ title, onClose, children }: { title: string; onClose: (
 }
 
 function ArenaSettings({ eventId }: { eventId: string }) {
-  const { arenas, classes, streams, saveArena, deleteArena } = useEquestrian();
+  const { arenas, classes, streams, saveArena, deleteArena, reorderArenas } = useEquestrian();
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const eventArenas = arenas.filter(arena => arena.eventId === eventId);
+  const eventArenas = sortArenas(arenas.filter(arena => arena.eventId === eventId));
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setMessage('');
     try { await action(); }
     catch (error) { setMessage((error as Error).message); }
     finally { setBusy(false); }
   };
-  return <details className="border rounded-xl p-3">
+  const handleMoveArena = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= eventArenas.length) return;
+    const reordered = [...eventArenas];
+    const [removed] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, removed);
+    const payload = reordered.map((a, idx) => ({ id: a.id, order: idx + 1 }));
+    await run(() => reorderArenas(payload));
+  };
+  return <details className="border rounded-xl p-3 bg-neutral-50/50">
     <summary className="font-bold text-sm text-[#123E59] cursor-pointer min-h-8">Pistas del concurso · {eventArenas.length === 1 ? 'Una pista' : eventArenas.length + ' pistas'}</summary>
     <div className="space-y-3 mt-3">
-      <p className="text-xs text-neutral-500">Si el concurso usa más de una pista, agregalas aquí y asigná cada prueba a la que corresponde.</p>
-      {eventArenas.map(arena => {
+      <p className="text-xs text-neutral-500">Si el concurso usa más de una pista, agregalas aquí, ordenalas con las flechas y asigná cada prueba a la que corresponde.</p>
+      {eventArenas.map((arena, index) => {
         const used = classes.some(entry => entry.arenaId === arena.id) || streams.some(stream => stream.arenaId === arena.id);
-        return <form key={arena.id} className="flex flex-wrap gap-2 items-end" onSubmit={event => {
-          event.preventDefault();
-          const input = new FormData(event.currentTarget).get('arenaName') as string;
-          void run(() => saveArena(eventId, input, arena.id));
-        }}>
-          <label className="text-xs flex-1 min-w-32">Nombre de pista<input aria-label={'Nombre de ' + arena.name} name="arenaName" required defaultValue={arena.name} className={field} /></label>
-          <button disabled={busy} className={button}>Guardar</button>
-          {!arena.isPrimary && <button type="button" disabled={busy || used} title={used ? 'Tiene pruebas o transmisiones asignadas' : 'Eliminar pista'} aria-label={'Eliminar ' + arena.name} className="p-3 text-red-700 disabled:opacity-40"
-            onClick={() => { if (window.confirm('¿Eliminar esta pista sin asignaciones?')) void run(() => deleteArena(arena.id)); }}><Trash2 className="w-4 h-4" /></button>}
-        </form>;
+        return <div key={arena.id} className="flex flex-wrap sm:flex-nowrap gap-2 items-center p-2 rounded-xl border border-neutral-200 bg-white">
+          {eventArenas.length > 1 && (
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[11px] font-bold text-neutral-400 w-5 text-center">#{index + 1}</span>
+              <button
+                type="button"
+                disabled={busy || index === 0}
+                onClick={() => handleMoveArena(index, 'up')}
+                title="Subir pista"
+                aria-label={'Subir pista ' + arena.name}
+                className="p-1.5 text-neutral-500 hover:text-[#123E59] disabled:opacity-30 rounded hover:bg-neutral-100 cursor-pointer"
+              >
+                <ArrowUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={busy || index === eventArenas.length - 1}
+                onClick={() => handleMoveArena(index, 'down')}
+                title="Bajar pista"
+                aria-label={'Bajar pista ' + arena.name}
+                className="p-1.5 text-neutral-500 hover:text-[#123E59] disabled:opacity-30 rounded hover:bg-neutral-100 cursor-pointer"
+              >
+                <ArrowDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <form className="flex flex-1 flex-wrap gap-2 items-end min-w-0" onSubmit={event => {
+            event.preventDefault();
+            const input = new FormData(event.currentTarget).get('arenaName') as string;
+            void run(() => saveArena(eventId, input, arena.id));
+          }}>
+            <label className="text-xs flex-1 min-w-32">
+              <span className="sr-only">Nombre de pista</span>
+              <input aria-label={'Nombre de ' + arena.name} name="arenaName" required defaultValue={arena.name} className={field} />
+            </label>
+            <button disabled={busy} className={button}>Guardar</button>
+            {!arena.isPrimary && <button type="button" disabled={busy || used} title={used ? 'Tiene pruebas o transmisiones asignadas' : 'Eliminar pista'} aria-label={'Eliminar ' + arena.name} className="p-3 text-red-700 disabled:opacity-40 hover:bg-red-50 rounded-lg cursor-pointer"
+              onClick={() => { if (window.confirm('¿Eliminar esta pista sin asignaciones?')) void run(() => deleteArena(arena.id)); }}><Trash2 className="w-4 h-4" /></button>}
+          </form>
+        </div>;
       })}
       <form className="flex flex-wrap gap-2 items-end" onSubmit={event => {
         event.preventDefault();
@@ -63,22 +102,73 @@ function ArenaSettings({ eventId }: { eventId: string }) {
 }
 
 export function TestsManager({ event, onClose }: { event: EquestrianEvent; onClose: () => void }) {
-  const { classes, arenas, documents, scheduleError, arenaError, saveClass, saveClasses, deleteClass } = useEquestrian();
+  const {
+    classes,
+    arenas,
+    documents,
+    scheduleError,
+    arenaError,
+    saveClass,
+    saveClasses,
+    deleteClass,
+    reorderClasses,
+    reorderArenas,
+  } = useEquestrian();
   const [date, setDate] = useState('');
   const [entry, setEntry] = useState<CompetitionClass | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | 'duplicate'>('create');
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [draggedClassId, setDraggedClassId] = useState<string | null>(null);
+  const [dragOverClassId, setDragOverClassId] = useState<string | null>(null);
+
   const entries = classes.filter(item => item.eventId === event.id && (!date || item.date === date));
   const dates = getDaysBetween(event.startDate, event.endDate);
   const eventArenas = arenas.filter(arena => arena.eventId === event.id);
+  const sortedEventArenas = sortArenas(eventArenas);
+
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setMessage('');
     try { await action(); }
     catch (error) { setMessage((error as Error).message || 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
+
+  const handleMoveClass = async (
+    dayDate: string,
+    arenaId: string,
+    sourceIndex: number,
+    destinationIndex: number
+  ) => {
+    const arenaClasses = sortClasses(
+      classes.filter(item => item.eventId === event.id && item.date === dayDate && item.arenaId === arenaId)
+    );
+    if (destinationIndex < 0 || destinationIndex >= arenaClasses.length || sourceIndex === destinationIndex) {
+      return;
+    }
+    const reordered = [...arenaClasses];
+    const [moved] = reordered.splice(sourceIndex, 1);
+    reordered.splice(destinationIndex, 0, moved);
+
+    const payload = reordered.map((item, idx) => ({
+      id: item.id,
+      order: idx + 1,
+    }));
+
+    await run(() => reorderClasses(payload));
+  };
+
+  const handleMoveArenaOrder = async (arenaIndex: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? arenaIndex - 1 : arenaIndex + 1;
+    if (targetIndex < 0 || targetIndex >= sortedEventArenas.length) return;
+    const reordered = [...sortedEventArenas];
+    const [removed] = reordered.splice(arenaIndex, 1);
+    reordered.splice(targetIndex, 0, removed);
+    const payload = reordered.map((a, idx) => ({ id: a.id, order: idx + 1 }));
+    await run(() => reorderArenas(payload));
+  };
+
   return <ManagerDialog title={'Pruebas · ' + event.name} onClose={onClose}>
     {scheduleError || arenaError ? <p role="alert">{scheduleError || arenaError}</p> : <>
       <ArenaSettings eventId={event.id} />
@@ -114,55 +204,253 @@ export function TestsManager({ event, onClose }: { event: EquestrianEvent; onClo
         />
       )}
       {!entries.length && <p className="text-sm text-neutral-500">Todavía no hay pruebas cargadas para esta selección.</p>}
-      {dates.filter(value => entries.some(item => item.date === value)).map(value => <section key={value} className="space-y-2">
-        <h3 className="text-xs font-bold text-[#123E59]">{formatDayHeader(value).fullFormatted}</h3>
-        {sortClasses(entries.filter(item => item.date === value)).map(item => <div key={item.id} className="border rounded-xl p-3 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs text-neutral-500">{item.time || 'Horario a confirmar'} · Prueba {item.number}{eventArenas.length > 1 && ' · ' + (eventArenas.find(arena => arena.id === item.arenaId)?.name || 'Sin pista')}</p>
-            <p className="font-bold text-sm break-words">{item.name}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              aria-label={'Duplicar prueba ' + item.number}
-              title="Duplicar prueba"
-              disabled={busy}
-              className="p-2 sm:p-2.5 text-neutral-600 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-              onClick={() => {
-                setEntry(item);
-                setFormMode('duplicate');
-                setAdding(true);
-              }}
-            >
-              <Copy className="w-4 h-4" />
-              <span className="hidden sm:inline">Duplicar</span>
-            </button>
-            <button
-              aria-label={'Editar prueba ' + item.number}
-              title="Editar prueba"
-              disabled={busy}
-              className="p-2 sm:p-2.5 text-neutral-600 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors"
-              onClick={() => {
-                setEntry(item);
-                setFormMode('edit');
-                setAdding(true);
-              }}
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              aria-label={'Eliminar prueba ' + item.number}
-              disabled={busy || documents.some(doc => doc.classId === item.id)}
-              title={documents.some(doc => doc.classId === item.id) ? 'Las pruebas con documentos asociados no se pueden eliminar' : 'Eliminar prueba'}
-              className="p-2 sm:p-2.5 text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-              onClick={() => {
-                if (window.confirm('¿Eliminar esta prueba?')) void run(() => deleteClass(item.id));
-              }}
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>)}
-      </section>)}
+
+      {dates.filter(value => entries.some(item => item.date === value)).map(value => {
+        const dayClasses = entries.filter(item => item.date === value);
+        const dayArenas = sortedEventArenas.filter(arena => dayClasses.some(c => c.arenaId === arena.id));
+        const unmappedClasses = dayClasses.filter(c => !sortedEventArenas.some(a => a.id === c.arenaId));
+
+        return (
+          <section key={value} className="space-y-4 pt-1">
+            <div className="flex items-center justify-between pb-1 border-b border-neutral-200">
+              <h3 className="text-sm font-bold text-[#123E59] flex items-center gap-2">
+                <span>{formatDayHeader(value).fullFormatted}</span>
+                <span className="text-xs font-normal text-neutral-500">
+                  ({dayClasses.length} {dayClasses.length === 1 ? 'prueba' : 'pruebas'})
+                </span>
+              </h3>
+            </div>
+
+            {dayArenas.map(arena => {
+              const arenaIdx = sortedEventArenas.findIndex(item => item.id === arena.id);
+              const arenaClasses = sortClasses(dayClasses.filter(item => item.arenaId === arena.id));
+              if (arenaClasses.length === 0) return null;
+
+              return (
+                <div key={arena.id} className="space-y-2 bg-neutral-50/70 p-3 rounded-xl border border-neutral-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#123E59]" />
+                      <span className="font-bold text-xs uppercase text-[#123E59] tracking-wider">
+                        {arena.name}
+                      </span>
+                      <span className="text-[11px] text-neutral-500 font-medium">
+                        · {arenaClasses.length} {arenaClasses.length === 1 ? 'prueba' : 'pruebas'}
+                      </span>
+                    </div>
+
+                    {sortedEventArenas.length > 1 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-neutral-400 mr-0.5">Pista #{arenaIdx + 1}</span>
+                        <button
+                          type="button"
+                          disabled={busy || arenaIdx === 0}
+                          onClick={() => handleMoveArenaOrder(arenaIdx, 'up')}
+                          title="Mover pista arriba en el orden"
+                          aria-label={`Subir pista ${arena.name}`}
+                          className="p-1 text-neutral-500 hover:text-[#123E59] disabled:opacity-25 rounded hover:bg-white cursor-pointer"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || arenaIdx === sortedEventArenas.length - 1}
+                          onClick={() => handleMoveArenaOrder(arenaIdx, 'down')}
+                          title="Mover pista abajo en el orden"
+                          aria-label={`Bajar pista ${arena.name}`}
+                          className="p-1 text-neutral-500 hover:text-[#123E59] disabled:opacity-25 rounded hover:bg-white cursor-pointer"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {arenaClasses.map((item, classIdx) => {
+                      const scheduleLabel = formatClassSchedule(item);
+                      const isDragging = draggedClassId === item.id;
+                      const isDragOver = dragOverClassId === item.id;
+
+                      return (
+                        <div
+                          key={item.id}
+                          draggable={!busy}
+                          onDragStart={e => {
+                            e.dataTransfer.setData('text/plain', item.id);
+                            setDraggedClassId(item.id);
+                          }}
+                          onDragOver={e => {
+                            e.preventDefault();
+                            if (dragOverClassId !== item.id) {
+                              setDragOverClassId(item.id);
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverClassId === item.id) {
+                              setDragOverClassId(null);
+                            }
+                          }}
+                          onDrop={async e => {
+                            e.preventDefault();
+                            const sourceId = draggedClassId || e.dataTransfer.getData('text/plain');
+                            setDraggedClassId(null);
+                            setDragOverClassId(null);
+                            if (!sourceId || sourceId === item.id) return;
+                            const srcIdx = arenaClasses.findIndex(c => c.id === sourceId);
+                            const dstIdx = classIdx;
+                            if (srcIdx >= 0 && dstIdx >= 0) {
+                              await handleMoveClass(value, arena.id, srcIdx, dstIdx);
+                            }
+                          }}
+                          onDragEnd={() => {
+                            setDraggedClassId(null);
+                            setDragOverClassId(null);
+                          }}
+                          className={`border rounded-xl p-2.5 sm:p-3 flex items-start justify-between gap-2 bg-white transition-all ${
+                            isDragging
+                              ? 'opacity-40 border-dashed border-[#123E59]'
+                              : isDragOver
+                              ? 'border-[#123E59] ring-2 ring-[#123E59]/20'
+                              : 'border-neutral-200 hover:border-neutral-300'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                              <span
+                                className="cursor-grab active:cursor-grabbing text-neutral-400 hover:text-neutral-700 p-0.5"
+                                title="Arrastrar para reordenar"
+                              >
+                                <GripVertical className="w-4 h-4" />
+                              </span>
+                              <span
+                                className="inline-flex items-center justify-center min-w-[22px] px-1 py-0.5 rounded bg-neutral-100 text-[10px] font-bold text-neutral-600"
+                                title={`Orden de visualización: #${classIdx + 1}`}
+                              >
+                                #{classIdx + 1}
+                              </span>
+                              <div className="flex flex-col">
+                                <button
+                                  type="button"
+                                  disabled={busy || classIdx === 0}
+                                  onClick={() => handleMoveClass(value, arena.id, classIdx, classIdx - 1)}
+                                  title="Subir en el orden"
+                                  aria-label={`Subir prueba ${item.number}`}
+                                  className="text-neutral-400 hover:text-[#123E59] disabled:opacity-20 cursor-pointer p-0.5"
+                                >
+                                  <ArrowUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || classIdx === arenaClasses.length - 1}
+                                  onClick={() => handleMoveClass(value, arena.id, classIdx, classIdx + 1)}
+                                  title="Bajar en el orden"
+                                  aria-label={`Bajar prueba ${item.number}`}
+                                  className="text-neutral-400 hover:text-[#123E59] disabled:opacity-20 cursor-pointer p-0.5"
+                                >
+                                  <ArrowDown className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-neutral-500">
+                                {scheduleLabel ? `${scheduleLabel} · ` : ''}
+                                <span className="font-semibold text-neutral-700">Prueba {item.number}</span>
+                              </p>
+                              <p className="font-bold text-sm text-[#123E59] break-words">{item.name}</p>
+                              {item.description && (
+                                <p className="text-xs text-neutral-500 truncate">{item.description}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              aria-label={'Duplicar prueba ' + item.number}
+                              title="Duplicar prueba"
+                              disabled={busy}
+                              className="p-2 text-neutral-600 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                              onClick={() => {
+                                setEntry(item);
+                                setFormMode('duplicate');
+                                setAdding(true);
+                              }}
+                            >
+                              <Copy className="w-4 h-4" />
+                              <span className="hidden sm:inline">Duplicar</span>
+                            </button>
+                            <button
+                              aria-label={'Editar prueba ' + item.number}
+                              title="Editar prueba"
+                              disabled={busy}
+                              className="p-2 text-neutral-600 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => {
+                                setEntry(item);
+                                setFormMode('edit');
+                                setAdding(true);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              aria-label={'Eliminar prueba ' + item.number}
+                              disabled={busy || documents.some(doc => doc.classId === item.id)}
+                              title={documents.some(doc => doc.classId === item.id) ? 'Las pruebas con documentos asociados no se pueden eliminar' : 'Eliminar prueba'}
+                              className="p-2 text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40 cursor-pointer"
+                              onClick={() => {
+                                if (window.confirm('¿Eliminar esta prueba?')) void run(() => deleteClass(item.id));
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {unmappedClasses.length > 0 && (
+              <div className="space-y-2 bg-neutral-50/70 p-3 rounded-xl border border-neutral-200">
+                <span className="font-bold text-xs uppercase text-neutral-500 tracking-wider">
+                  Otras pruebas (sin pista asignada)
+                </span>
+                <div className="space-y-1.5">
+                  {sortClasses(unmappedClasses).map(item => {
+                    const scheduleLabel = formatClassSchedule(item);
+                    return (
+                      <div key={item.id} className="border rounded-xl p-3 flex items-start justify-between gap-2 bg-white">
+                        <div className="min-w-0">
+                          <p className="text-xs text-neutral-500">{scheduleLabel ? `${scheduleLabel} · ` : ''}Prueba {item.number}</p>
+                          <p className="font-bold text-sm break-words">{item.name}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            aria-label={'Editar prueba ' + item.number}
+                            title="Editar prueba"
+                            disabled={busy}
+                            className="p-2 text-neutral-600 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
+                            onClick={() => {
+                              setEntry(item);
+                              setFormMode('edit');
+                              setAdding(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        );
+      })}
     </>}
   </ManagerDialog>;
 }
@@ -172,6 +460,8 @@ interface DayOverride {
   number: string;
   time: string;
   arenaId: string;
+  isApproximate?: boolean;
+  isContinuous?: boolean;
 }
 
 function ClassForm({
@@ -193,7 +483,7 @@ function ClassForm({
   onSaveBatch: (entries: Array<Omit<CompetitionClass, 'id'>>) => Promise<void>;
   onCancel: () => void;
 }) {
-  const { arenas, documents } = useEquestrian();
+  const { classes, arenas, documents } = useEquestrian();
   const eventArenas = arenas.filter(arena => arena.eventId === event.id);
   const primaryArenaId = eventArenas.find(arena => arena.isPrimary)?.id || (eventArenas[0]?.id ?? '');
   const allContestDates = getDaysBetween(event.startDate, event.endDate);
@@ -207,9 +497,14 @@ function ClassForm({
   const [commonArenaId, setCommonArenaId] = useState(entry?.arenaId || primaryArenaId);
   const [commonNumber, setCommonNumber] = useState(entry?.number || '');
   const [commonTime, setCommonTime] = useState(entry?.time || '');
+  const [commonApproximate, setCommonApproximate] = useState(entry?.isApproximate ?? false);
+  const [commonContinuous, setCommonContinuous] = useState(entry?.isContinuous ?? false);
   const [name, setName] = useState(entry?.name || '');
   const [description, setDescription] = useState(entry?.description || '');
-  const [order, setOrder] = useState(entry?.order ?? 1);
+
+  const existingInDay = classes.filter(c => c.eventId === event.id && c.date === (entry?.date || initialDate));
+  const maxExistingOrder = existingInDay.length > 0 ? Math.max(...existingInDay.map(c => c.order || 0)) : 0;
+  const [order, setOrder] = useState(entry ? entry.order : (maxExistingOrder + 1));
 
   // Overrides per day when creating across multiple days
   const [overrides, setOverrides] = useState<Record<string, DayOverride>>({});
@@ -229,13 +524,15 @@ function ClassForm({
     });
   };
 
-  const updateOverride = (day: string, fieldName: keyof DayOverride, val: string) => {
+  const updateOverride = (day: string, fieldName: keyof DayOverride, val: any) => {
     setOverrides(prev => {
       const current = prev[day] || {
         date: day,
         number: commonNumber,
         time: commonTime,
         arenaId: commonArenaId,
+        isApproximate: commonApproximate,
+        isContinuous: commonContinuous,
       };
       return {
         ...prev,
@@ -255,6 +552,14 @@ function ClassForm({
     return commonArenaId;
   };
 
+  const getEffectiveBool = (day: string, fieldName: 'isApproximate' | 'isContinuous'): boolean => {
+    const o = overrides[day];
+    if (o && o[fieldName] !== undefined) return Boolean(o[fieldName]);
+    if (fieldName === 'isApproximate') return commonApproximate;
+    if (fieldName === 'isContinuous') return commonContinuous;
+    return false;
+  };
+
   const handleSubmit = (form: React.FormEvent) => {
     form.preventDefault();
     if (isEditingExisting) {
@@ -269,9 +574,11 @@ function ClassForm({
         arenaId: targetArena,
         number: commonNumber,
         name,
-        time: commonTime,
+        time: commonContinuous ? (commonTime || '') : commonTime,
         description,
         order,
+        isApproximate: commonContinuous ? false : commonApproximate,
+        isContinuous: commonContinuous,
       });
       return;
     }
@@ -281,6 +588,8 @@ function ClassForm({
       const effNumber = getEffectiveField(day, 'number');
       const effTime = getEffectiveField(day, 'time');
       const effArena = eventArenas.length === 1 ? primaryArenaId : getEffectiveField(day, 'arenaId');
+      const effContinuous = getEffectiveBool(day, 'isContinuous');
+      const effApproximate = effContinuous ? false : getEffectiveBool(day, 'isApproximate');
       return {
         dayId: '',
         eventId: event.id,
@@ -288,9 +597,11 @@ function ClassForm({
         arenaId: effArena,
         number: effNumber,
         name,
-        time: effTime,
+        time: effContinuous ? (effTime || '') : effTime,
         description,
         order,
+        isApproximate: effApproximate,
+        isContinuous: effContinuous,
       };
     });
 
@@ -451,25 +762,70 @@ function ClassForm({
         )}
 
         {/* Number & Time */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-neutral-700">
-            {selectedDates.length > 1 ? 'Número general' : 'Número'}
+            {selectedDates.length > 1 ? 'Identificación general (número o letra)' : 'Identificación (número o letra)'}
             <input
               required
               className={field}
               value={commonNumber}
               onChange={form => setCommonNumber(form.target.value)}
-              placeholder="Ej. 1"
+              placeholder="Ej. 1 o A"
             />
           </label>
-          <label className="text-xs font-semibold text-neutral-700">
-            {selectedDates.length > 1 ? 'Horario general' : 'Horario'}
+          <div>
+            <div className="flex items-center justify-between">
+              <label htmlFor="common-time-input" className="text-xs font-semibold text-neutral-700">
+                {selectedDates.length > 1 ? 'Horario general (opcional)' : 'Horario (opcional)'}
+              </label>
+              {commonTime && (
+                <button
+                  type="button"
+                  onClick={() => setCommonTime('')}
+                  className="text-[11px] text-red-600 hover:text-red-800 font-semibold cursor-pointer"
+                  title="Borrar horario cargado"
+                >
+                  Borrar horario
+                </button>
+              )}
+            </div>
             <input
+              id="common-time-input"
               type="time"
               className={field}
               value={commonTime}
               onChange={form => setCommonTime(form.target.value)}
             />
+          </div>
+        </div>
+
+        {/* Checkbox: Horario aproximado & Continuada */}
+        <div className="bg-white border border-neutral-200 rounded-xl p-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+          <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={commonApproximate}
+              disabled={commonContinuous}
+              onChange={e => setCommonApproximate(e.target.checked)}
+              className="rounded text-[#123E59] focus:ring-[#123E59] w-4 h-4 cursor-pointer"
+            />
+            <span>Horario aproximado</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={commonContinuous}
+              onChange={e => {
+                const checked = e.target.checked;
+                setCommonContinuous(checked);
+                if (checked) {
+                  setCommonApproximate(false);
+                }
+              }}
+              className="rounded text-[#123E59] focus:ring-[#123E59] w-4 h-4 cursor-pointer"
+            />
+            <span>Continuada (sin horario fijo)</span>
           </label>
         </div>
 
@@ -498,15 +854,18 @@ function ClassForm({
 
         {/* Sort order */}
         <label className="block text-xs font-semibold text-neutral-700">
-          Orden para horarios iguales
+          Orden de visualización
           <input
             type="number"
-            min="0"
+            min="1"
             required
             className={field}
             value={order}
             onChange={form => setOrder(Number(form.target.value))}
           />
+          <span className="block text-[11px] text-neutral-500 font-normal mt-1">
+            Posición relativa dentro de la jornada y pista. También podés reordenarlas arrastrando desde el listado.
+          </span>
         </label>
 
         {/* Editable summary table per day if multiple days selected */}
@@ -516,7 +875,7 @@ function ClassForm({
               <h4 className="text-xs font-bold text-[#123E59]">
                 Resumen por jornada ({selectedDates.length} pruebas a crear)
               </h4>
-              <span className="text-[11px] text-neutral-500">Podés ajustar número, horario o pista por día</span>
+              <span className="text-[11px] text-neutral-500">Podés ajustar identificación, horario o pista por día</span>
             </div>
 
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -528,23 +887,35 @@ function ClassForm({
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <label className="text-[11px] text-neutral-600">
-                      Número
+                      Identificación
                       <input
                         required
                         className="block w-full rounded border border-neutral-300 px-2 py-1.5 text-xs mt-0.5 bg-white"
                         value={getEffectiveField(day, 'number')}
                         onChange={e => updateOverride(day, 'number', e.target.value)}
+                        placeholder="Ej. 1 o A"
                       />
                     </label>
-                    <label className="text-[11px] text-neutral-600">
-                      Horario
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-neutral-600">
+                        <span>Horario</span>
+                        {getEffectiveField(day, 'time') && (
+                          <button
+                            type="button"
+                            onClick={() => updateOverride(day, 'time', '')}
+                            className="text-[10px] text-red-600 hover:text-red-800 font-semibold cursor-pointer"
+                          >
+                            Borrar
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="time"
                         className="block w-full rounded border border-neutral-300 px-2 py-1.5 text-xs mt-0.5 bg-white"
                         value={getEffectiveField(day, 'time')}
                         onChange={e => updateOverride(day, 'time', e.target.value)}
                       />
-                    </label>
+                    </div>
                     {eventArenas.length > 1 && (
                       <label className="text-[11px] text-neutral-600 col-span-2 sm:col-span-1">
                         Pista
@@ -559,6 +930,33 @@ function ClassForm({
                         </select>
                       </label>
                     )}
+                    <div className="col-span-2 sm:col-span-3 flex flex-wrap gap-4 pt-1">
+                      <label className="flex items-center gap-1.5 text-[11px] text-neutral-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={getEffectiveBool(day, 'isApproximate')}
+                          disabled={getEffectiveBool(day, 'isContinuous')}
+                          onChange={e => updateOverride(day, 'isApproximate', e.target.checked)}
+                          className="rounded text-[#123E59] w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>Aproximado</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11px] text-neutral-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={getEffectiveBool(day, 'isContinuous')}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            updateOverride(day, 'isContinuous', checked);
+                            if (checked) {
+                              updateOverride(day, 'isApproximate', false);
+                            }
+                          }}
+                          className="rounded text-[#123E59] w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>Continuada</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               ))}

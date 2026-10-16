@@ -439,5 +439,72 @@ test('Incremental migration preserves records and enforces RLS and associations'
     });
   });
 
+  await context.test('Class schedule migration supports approximate time, continuous classes, and nullable start_time', async () => {
+    await db.exec(await readFile(new URL('../supabase/migrations/20261015_class_schedule_adjustments.sql', import.meta.url), 'utf8'));
+
+    await asRole('authenticated', true, async () => {
+      // 1. Existing classes received default false for flags
+      const existingClass = (await db.query<{ is_approximate: boolean; is_continuous: boolean }>(
+        'SELECT is_approximate, is_continuous FROM competition_classes WHERE id=$1', [classId]
+      )).rows[0];
+      assert.equal(existingClass.is_approximate, false);
+      assert.equal(existingClass.is_continuous, false);
+
+      // 2. Clear start_time completely to NULL on existing class
+      await db.query('UPDATE competition_classes SET start_time=NULL WHERE id=$1', [classId]);
+      const clearedTimeClass = (await db.query<{ start_time: string | null }>(
+        'SELECT start_time FROM competition_classes WHERE id=$1', [classId]
+      )).rows[0];
+      assert.equal(clearedTimeClass.start_time, null);
+
+      // 3. Create class with approximate time
+      const approxClassId = '00000000-0000-4000-8000-000000000050';
+      await db.query(`
+        INSERT INTO competition_classes(id, day_id, event_id, event_date, number, name, start_time, is_approximate, is_continuous)
+        VALUES ($1, $2, $3, '2026-10-04', '60', 'Prueba 60', '09:00', true, false)
+      `, [approxClassId, dayId, published]);
+      const approxClass = (await db.query<{ is_approximate: boolean; is_continuous: boolean; start_time: string }>(
+        'SELECT is_approximate, is_continuous, start_time FROM competition_classes WHERE id=$1', [approxClassId]
+      )).rows[0];
+      assert.equal(approxClass.is_approximate, true);
+      assert.equal(approxClass.is_continuous, false);
+      assert.equal(approxClass.start_time, '09:00:00');
+
+      // 4. Create continuous class without time (start_time IS NULL)
+      const contClassId = '00000000-0000-4000-8000-000000000051';
+      await db.query(`
+        INSERT INTO competition_classes(id, day_id, event_id, event_date, number, name, start_time, is_approximate, is_continuous)
+        VALUES ($1, $2, $3, '2026-10-04', '61', 'Prueba 61', NULL, false, true)
+      `, [contClassId, dayId, published]);
+      const contClass = (await db.query<{ is_approximate: boolean; is_continuous: boolean; start_time: string | null }>(
+        'SELECT is_approximate, is_continuous, start_time FROM competition_classes WHERE id=$1', [contClassId]
+      )).rows[0];
+      assert.equal(contClass.is_approximate, false);
+      assert.equal(contClass.is_continuous, true);
+      assert.equal(contClass.start_time, null);
+    });
+  });
+
+  await context.test('Arena and class ordering migration supports sort_order column and reordering', async () => {
+    await db.exec(await readFile(new URL('../supabase/migrations/20261016_arena_and_class_ordering.sql', import.meta.url), 'utf8'));
+
+    await asRole('authenticated', true, async () => {
+      // 1. Primary arena has sort_order = 1
+      const arenaRows = (await db.query<{ sort_order: number; is_primary: boolean }>(
+        'SELECT sort_order, is_primary FROM competition_arenas WHERE event_id=$1', [published]
+      )).rows;
+      assert.ok(arenaRows.length > 0);
+      const primary = arenaRows.find(a => a.is_primary);
+      assert.equal(primary?.sort_order, 1);
+
+      // 2. Class sort_order can be updated for custom display order
+      await db.query('UPDATE competition_classes SET sort_order=42 WHERE id=$1', [classId]);
+      const updatedClass = (await db.query<{ sort_order: number }>(
+        'SELECT sort_order FROM competition_classes WHERE id=$1', [classId]
+      )).rows[0];
+      assert.equal(updatedClass.sort_order, 42);
+    });
+  });
+
   await db.close();
 });

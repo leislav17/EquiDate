@@ -27,6 +27,8 @@ interface EquestrianContextType {
   saveClass: (entry: Omit<CompetitionClass, 'id'> & { id?: string }) => Promise<void>;
   saveClasses: (entries: Array<Omit<CompetitionClass, 'id'>>) => Promise<void>;
   deleteClass: (id: string) => Promise<void>;
+  reorderClasses: (orderedClasses: Array<{ id: string; order: number }>) => Promise<void>;
+  reorderArenas: (orderedArenas: Array<{ id: string; order: number }>) => Promise<void>;
   documents: DocumentItem[];
   activeYear: number;
   setActiveYear: (year: number) => void;
@@ -252,6 +254,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           id: entry.id, dayId: entry.day_id, eventId: entry.event_id, arenaId: entry.arena_id || '',
           date: entry.event_date, time: entry.start_time?.slice(0, 5) || '',
           number: entry.number, name: entry.name, description: entry.description || '', order: entry.sort_order,
+          isApproximate: Boolean(entry.is_approximate),
+          isContinuous: Boolean(entry.is_continuous),
         })));
       }
       const [arenaResponse, streamResponse] = await Promise.all([
@@ -265,6 +269,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else {
         setArenas((arenaResponse.data || []).map(arena => ({
           id: arena.id, eventId: arena.event_id, name: arena.name, isPrimary: arena.is_primary,
+          order: typeof arena.sort_order === 'number' ? arena.sort_order : (arena.is_primary ? 1 : 2),
         })));
         setStreams((streamResponse.data || []).map(stream => ({
           id: stream.id, eventId: stream.event_id, dayId: stream.day_id,
@@ -576,12 +581,32 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const arena = arenas.find(item => item.id === entry.arenaId && item.eventId === entry.eventId);
     if (!arena) throw new Error('Seleccioná una pista del concurso.');
     const dayId = await ensureDay(entry.eventId, entry.date);
-    const payload = { day_id: dayId, arena_id: arena.id, event_id: entry.eventId, event_date: entry.date,
-      start_time: entry.time || null, number: entry.number.trim(), name: entry.name.trim(),
-      description: entry.description.trim(), sort_order: entry.order };
-    const response = entry.id
-      ? await supabase.from('competition_classes').update(payload).eq('id', entry.id).select('id').single()
-      : await supabase.from('competition_classes').insert(payload).select('id').single();
+    const cleanTime = entry.time ? entry.time.trim().slice(0, 5) : null;
+    const basePayload = {
+      day_id: dayId,
+      arena_id: arena.id,
+      event_id: entry.eventId,
+      event_date: entry.date,
+      start_time: cleanTime || null,
+      number: entry.number.trim(),
+      name: entry.name.trim(),
+      description: entry.description.trim(),
+      sort_order: entry.order,
+    };
+    const payloadWithFlags = {
+      ...basePayload,
+      is_approximate: Boolean(entry.isApproximate),
+      is_continuous: Boolean(entry.isContinuous),
+    };
+    let response = entry.id
+      ? await supabase.from('competition_classes').update(payloadWithFlags).eq('id', entry.id).select('id').single()
+      : await supabase.from('competition_classes').insert(payloadWithFlags).select('id').single();
+
+    if (response.error && (response.error.message?.includes('is_approximate') || response.error.message?.includes('is_continuous') || response.error.code === '42703')) {
+      response = entry.id
+        ? await supabase.from('competition_classes').update(basePayload).eq('id', entry.id).select('id').single()
+        : await supabase.from('competition_classes').insert(basePayload).select('id').single();
+    }
     if (response.error) throw response.error;
     await refreshData();
   };
@@ -611,20 +636,28 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Build payload array for atomic single-statement batch insert
     const payloadArray = entries.map(entry => {
       const dayId = dayIdMap.get(`${entry.eventId}_${entry.date}`);
+      const cleanTime = entry.time ? entry.time.trim().slice(0, 5) : null;
       return {
         day_id: dayId!,
         arena_id: entry.arenaId,
         event_id: entry.eventId,
         event_date: entry.date,
-        start_time: entry.time || null,
+        start_time: cleanTime || null,
         number: entry.number.trim(),
         name: entry.name.trim(),
         description: entry.description.trim(),
         sort_order: entry.order,
+        is_approximate: Boolean(entry.isApproximate),
+        is_continuous: Boolean(entry.isContinuous),
       };
     });
 
-    const { error } = await supabase.from('competition_classes').insert(payloadArray).select('id');
+    let { error } = await supabase.from('competition_classes').insert(payloadArray).select('id');
+    if (error && (error.message?.includes('is_approximate') || error.message?.includes('is_continuous') || error.code === '42703')) {
+      const fallbackArray = payloadArray.map(({ is_approximate, is_continuous, ...base }) => base);
+      const res = await supabase.from('competition_classes').insert(fallbackArray).select('id');
+      error = res.error;
+    }
     if (error) throw error;
     await refreshData();
   };
@@ -632,6 +665,45 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     requireAdmin();
     const { error } = await supabase.from('competition_classes').delete().eq('id', id).select('id').single();
     if (error) throw error;
+    await refreshData();
+  };
+  const reorderClasses: EquestrianContextType['reorderClasses'] = async orderedClasses => {
+    requireAdmin();
+    setClasses(prev => prev.map(cls => {
+      const match = orderedClasses.find(o => o.id === cls.id);
+      return match ? { ...cls, order: match.order } : cls;
+    }));
+
+    const updates = orderedClasses.map(item =>
+      supabase.from('competition_classes').update({ sort_order: item.order }).eq('id', item.id)
+    );
+    const results = await Promise.all(updates);
+    const failure = results.find(r => r.error);
+    if (failure?.error) throw failure.error;
+    await refreshData();
+  };
+  const reorderArenas: EquestrianContextType['reorderArenas'] = async orderedArenas => {
+    requireAdmin();
+    setArenas(prev => prev.map(a => {
+      const match = orderedArenas.find(o => o.id === a.id);
+      return match ? { ...a, order: match.order } : a;
+    }));
+
+    try {
+      const updates = orderedArenas.map(item =>
+        supabase.from('competition_arenas').update({ sort_order: item.order }).eq('id', item.id)
+      );
+      const results = await Promise.all(updates);
+      const failure = results.find(r => r.error);
+      if (failure?.error && !failure.error.message?.includes('sort_order') && failure.error.code !== '42703') {
+        throw failure.error;
+      }
+    } catch (err: any) {
+      if (!err?.message?.includes('sort_order') && err?.code !== '42703') {
+        await refreshData();
+        throw err;
+      }
+    }
     await refreshData();
   };
 
@@ -675,7 +747,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const namedDocuments = documents.map(doc => ({ ...doc, name: documentLabel(doc, classes) }));
 
   return <EquestrianContext.Provider value={{
-    events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass,
+    events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,

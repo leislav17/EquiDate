@@ -1,4 +1,4 @@
-import type { CompetitionClass } from '../types/equestrian.ts';
+import type { CompetitionClass, CompetitionArena } from '../types/equestrian.ts';
 
 export const DEFAULT_TIME_ZONE = 'America/Argentina/Buenos_Aires';
 
@@ -27,9 +27,63 @@ export function transmissionLabel(date: string, timeZone = DEFAULT_TIME_ZONE, no
   return date === today ? 'VER EN VIVO' : date < today ? 'VER TRANSMISIÓN' : 'VER PRÓXIMA TRANSMISIÓN';
 }
 
+export function formatClassSchedule(item?: {
+  time?: string | null;
+  isApproximate?: boolean;
+  isContinuous?: boolean;
+}): string {
+  if (!item) return '';
+  if (item.isContinuous) {
+    return 'Continuado';
+  }
+  const clean = (item.time || '').trim().slice(0, 5);
+  if (!clean) return '';
+  return item.isApproximate ? `${clean} hs (aprox.)` : `${clean} hs`;
+}
+
 export function sortClasses(entries: CompetitionClass[]): CompetitionClass[] {
-  return [...entries].sort((first, second) =>
-    (first.time || '99:99').localeCompare(second.time || '99:99') ||
-    first.order - second.order || first.number.localeCompare(second.number, 'es', { numeric: true }) ||
-    first.id.localeCompare(second.id));
+  const ordersWithoutTime = new Set(entries
+    .filter(entry => !(entry.time || '').trim())
+    .map(entry => typeof entry.order === 'number' ? entry.order : 0));
+  return [...entries].sort((first, second) => {
+    // 1. Prioridad principal: Orden de visualización configurado
+    const orderA = typeof first.order === 'number' ? first.order : 0;
+    const orderB = typeof second.order === 'number' ? second.order : 0;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+
+    // 2. Si el orden relativo es igual: los horarios ayudan al orden inicial si ambos tienen horario
+    const timeA = (first.time || '').trim().slice(0, 5);
+    const timeB = (second.time || '').trim().slice(0, 5);
+    if (!ordersWithoutTime.has(orderA) && timeA && timeB && timeA !== timeB) {
+      return timeA.localeCompare(timeB);
+    }
+
+    // 3. Identificación: números (1, 2, 3...) o letras (A, B, C...)
+    // Las pruebas sin horario mantienen su posición según su identificación y no van al final automáticamente
+    const numA = (first.number || '').trim();
+    const numB = (second.number || '').trim();
+    const numComparison = numA.localeCompare(numB, 'es', { numeric: true, sensitivity: 'base' });
+    if (numComparison !== 0) {
+      return numComparison;
+    }
+
+    // 4. Si tienen el mismo número o ambos están vacíos, el que tiene horario definido precede
+    if (timeA && !timeB) return -1;
+    if (!timeA && timeB) return 1;
+
+    // 5. Desempate estable por ID
+    return (first.id || '').localeCompare(second.id || '');
+  });
+}
+
+export function sortArenas(arenas: CompetitionArena[]): CompetitionArena[] {
+  return [...arenas].sort((first, second) => {
+    const orderA = typeof first.order === 'number' ? first.order : (first.isPrimary ? 0 : 100);
+    const orderB = typeof second.order === 'number' ? second.order : (second.isPrimary ? 0 : 100);
+    if (orderA !== orderB) return orderA - orderB;
+    if (first.isPrimary !== second.isPrimary) return first.isPrimary ? -1 : 1;
+    return first.name.localeCompare(second.name, 'es', { sensitivity: 'base' });
+  });
 }

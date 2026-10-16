@@ -5,6 +5,7 @@ import {
   DocumentType
 } from '../../types/equestrian';
 import { documentLabel, documentTypeLabel, isGeneralDocumentType } from '../../utils/documents';
+import { formatClassSchedule } from '../../utils/schedule';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { getDaysBetween, formatDayHeader } from '../../utils/dateUtils';
 import {
@@ -450,7 +451,10 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     Prueba del documento
                     <select required aria-label="Prueba del documento" value={docClass} onChange={form => setDocClass(form.target.value)} className="block w-full p-3 border rounded-lg mt-1 text-sm">
                       <option value="" disabled>Seleccioná una prueba</option>
-                      {classes.filter(entry => entry.eventId === event.id).map(entry => <option key={entry.id} value={entry.id}>{entry.date} · {entry.time || 'A confirmar'} · Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>)}
+                      {classes.filter(entry => entry.eventId === event.id).map(entry => {
+                        const sched = formatClassSchedule(entry);
+                        return <option key={entry.id} value={entry.id}>{entry.date} · {sched ? `${sched} · ` : ''}Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>;
+                      })}
                     </select>
                     {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde el botón Pruebas del concurso.</span>}
                   </label>

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { sanitizeUrl, renderRichText, renderInlineContent } from '../src/utils/richText.ts';
 
 test('sanitizeUrl allows safe http/https URLs and rejects unsafe protocols', () => {
@@ -54,6 +55,16 @@ test('renderRichText parses headings, lists, bold text and secure links', () => 
   assert.equal(linkElement.props.href, 'https://forms.gle/xyz');
   assert.equal(linkElement.props.target, '_blank');
   assert.equal(linkElement.props.rel, 'noopener noreferrer');
+});
+
+test('Rich text escapes HTML and never emits unsafe link protocols', () => {
+  const markup = renderToStaticMarkup(React.createElement('div', null,
+    renderRichText('<img src=x onerror=alert(1)>\n[Ataque](javascript:alert(1))\n[Seguro](https://example.com/?q=%22)')));
+  assert.ok(markup.includes('&lt;img'));
+  assert.ok(!markup.includes('<img'));
+  assert.ok(!markup.includes('href="javascript:'));
+  assert.ok(markup.includes('href="https://example.com/'));
+  assert.ok(markup.includes('rel="noopener noreferrer"'));
 });
 
 test('Important info public visibility correctly evaluates whether to hide or show the section', () => {

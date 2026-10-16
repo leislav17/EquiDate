@@ -277,7 +277,7 @@ export const CompetitionList: React.FC = () => {
                       return;
                     }
                   }
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
                     handleCardClick(currentEvents[activeIndex].id);
                   }
@@ -285,6 +285,7 @@ export const CompetitionList: React.FC = () => {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                style={{ touchAction: 'pan-y' }}
                 className="relative overflow-hidden rounded-2xl bg-[#123E59] text-white shadow-md hover:shadow-xl transition-all select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#93c5fd]"
               >
                 {/* Horizontal slider track */}
@@ -298,6 +299,8 @@ export const CompetitionList: React.FC = () => {
                       role="group"
                       aria-roledescription="slide"
                       aria-label={`${idx + 1} de ${currentEvents.length}: ${evt.name}`}
+                      aria-hidden={idx !== activeIndex}
+                      inert={idx !== activeIndex}
                       onClick={() => handleCardClick(evt.id)}
                       className="w-full shrink-0 relative cursor-pointer group"
                     >

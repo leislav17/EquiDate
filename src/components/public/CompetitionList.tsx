@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import {
   MONTHS_FULL,
@@ -11,6 +11,8 @@ import {
   List as ListIcon,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   ArrowRight,
   Clock,
   MapPin,
@@ -81,7 +83,7 @@ export const CompetitionList: React.FC = () => {
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [events, activeYear, selectedMonth]);
 
-  // Find any current event (ACTUAL) across all published events regardless of filter
+  // Find all current events (ACTUAL) across all published events regardless of filter
   const currentEvents = useMemo(() => {
     return events.filter(
       (evt) =>
@@ -90,7 +92,115 @@ export const CompetitionList: React.FC = () => {
     );
   }, [events]);
 
-  const featuredCurrentEvent = currentEvents.length > 0 ? currentEvents[0] : null;
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+
+  // Compute active index safely based on activeEventId
+  const activeIndex = useMemo(() => {
+    if (currentEvents.length === 0) return 0;
+    if (!activeEventId) return 0;
+    const idx = currentEvents.findIndex((e) => e.id === activeEventId);
+    return idx >= 0 ? idx : 0;
+  }, [currentEvents, activeEventId]);
+
+  // Keep selection stable when data updates and event is still available
+  useEffect(() => {
+    if (currentEvents.length === 0) {
+      if (activeEventId !== null) setActiveEventId(null);
+    } else if (!activeEventId || !currentEvents.some((e) => e.id === activeEventId)) {
+      setActiveEventId(currentEvents[0].id);
+    }
+  }, [currentEvents, activeEventId]);
+
+  const goToIndex = (newIndex: number) => {
+    if (currentEvents.length === 0) return;
+    const normalizedIndex =
+      (newIndex + currentEvents.length) % currentEvents.length;
+    setActiveEventId(currentEvents[normalizedIndex].id);
+  };
+
+  const handlePrev = () => goToIndex(activeIndex - 1);
+  const handleNext = () => goToIndex(activeIndex + 1);
+
+  // Touch gesture handling for smooth mobile swipe without vertical scroll interference
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const isSwipingHorizontal = useRef<boolean>(false);
+  const isSwipingVertical = useRef<boolean>(false);
+  const isDragging = useRef<boolean>(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (currentEvents.length <= 1) return;
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    isSwipingHorizontal.current = false;
+    isSwipingVertical.current = false;
+    isDragging.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (
+      touchStartX.current === null ||
+      touchStartY.current === null ||
+      currentEvents.length <= 1
+    ) {
+      return;
+    }
+
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const deltaX = currentX - touchStartX.current;
+    const deltaY = currentY - touchStartY.current;
+
+    if (!isSwipingHorizontal.current && !isSwipingVertical.current) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+        // Vertical page scroll: don't intercept
+        isSwipingVertical.current = true;
+        return;
+      } else {
+        // Horizontal swipe gesture
+        isSwipingHorizontal.current = true;
+        isDragging.current = true;
+      }
+    }
+
+    if (isSwipingHorizontal.current) {
+      isDragging.current = true;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || currentEvents.length <= 1) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      return;
+    }
+
+    const endX = e.changedTouches[0].clientX;
+    const deltaX = endX - touchStartX.current;
+
+    if (isSwipingHorizontal.current && Math.abs(deltaX) > 40) {
+      if (deltaX < 0) {
+        handleNext();
+      } else {
+        handlePrev();
+      }
+    }
+
+    touchStartX.current = null;
+    touchStartY.current = null;
+    isSwipingHorizontal.current = false;
+    isSwipingVertical.current = false;
+    setTimeout(() => {
+      isDragging.current = false;
+    }, 80);
+  };
+
+  const handleCardClick = (eventId: string) => {
+    if (isDragging.current) return;
+    setSelectedEventId(eventId);
+  };
 
   // Reset filters action
   const handleResetFilters = () => {
@@ -143,81 +253,189 @@ export const CompetitionList: React.FC = () => {
     <div className="w-full bg-[#f4f6f8] min-h-[calc(100vh-64px)] pb-12">
       <div className="max-w-5xl mx-auto px-4 py-5 sm:py-6">
         {/* ======================================================== */}
-        {/* 1. HERO: EVENTO ACTUAL DESTACADO (Independiente del filtro) */}
+        {/* 1. HERO: EVENTOS ACTUALES DESTACADOS (Carrusel con bucle) */}
         {/* ======================================================== */}
-        {featuredCurrentEvent && (
-          <section className="mb-6">
-            <div
-              onClick={() => setSelectedEventId(featuredCurrentEvent.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setSelectedEventId(featuredCurrentEvent.id);
-                }
-              }}
-              className="relative overflow-hidden rounded-2xl bg-[#123E59] text-white shadow-md hover:shadow-xl transition-all cursor-pointer group"
-            >
-              {/* Background Image with Dark Petrol Gradient Overlay */}
-              {featuredCurrentEvent.imageUrl ? (
-                <div className="absolute inset-0 z-0">
-                  <img
-                    src={featuredCurrentEvent.imageUrl}
-                    alt={featuredCurrentEvent.name}
-                    className="w-full h-full object-cover object-center opacity-35 group-hover:scale-105 transition-transform duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0e3247] via-[#123E59]/85 to-[#123E59]/70" />
-                </div>
-              ) : (
-                <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#123E59] via-[#0f344b] to-[#0a2333]" />
-              )}
-
-              {/* Hero Content */}
-              <div className="relative z-10 p-5 sm:p-7 flex flex-col justify-between min-h-[190px] sm:min-h-[210px]">
-                {/* Top Badge: ACTUAL */}
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#A61E4D] text-white text-[11px] font-black tracking-wider uppercase shadow-xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    <span>ACTUAL</span>
-                  </div>
-                  <span className="text-[11px] text-white/70 font-semibold tracking-wide hidden xs:inline">
-                    En desarrollo hoy
-                  </span>
-                </div>
-
-                {/* Center: Event Name */}
-                <div className="my-2">
-                  <h2 className="font-display text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight group-hover:text-blue-100 transition-colors">
-                    {featuredCurrentEvent.name}
-                  </h2>
-                </div>
-
-                {/* Bottom: Location, Date & CTA button */}
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-3 border-t border-white/15">
-                  <div className="space-y-1 text-xs sm:text-sm text-white/90">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-4 h-4 text-[#93c5fd] shrink-0" />
-                      <span className="font-semibold">{featuredCurrentEvent.venue}</span>
-                      {featuredCurrentEvent.city && (
-                        <span className="text-white/70">· {featuredCurrentEvent.city}</span>
+        {currentEvents.length > 0 && (
+          <section className="mb-6" aria-label="Concursos actuales destacados">
+            <div className="relative group/carousel">
+              {/* Carousel Viewport */}
+              <div
+                tabIndex={0}
+                role="region"
+                aria-label="Carrusel de concursos en curso"
+                aria-roledescription="carousel"
+                onKeyDown={(e) => {
+                  if (currentEvents.length > 1) {
+                    if (e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      handlePrev();
+                      return;
+                    }
+                    if (e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      handleNext();
+                      return;
+                    }
+                  }
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleCardClick(currentEvents[activeIndex].id);
+                  }
+                }}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className="relative overflow-hidden rounded-2xl bg-[#123E59] text-white shadow-md hover:shadow-xl transition-all select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#93c5fd]"
+              >
+                {/* Horizontal slider track */}
+                <div
+                  className="flex transition-transform duration-300 ease-out motion-reduce:transition-none w-full"
+                  style={{ transform: `translateX(-${activeIndex * 100}%)` }}
+                >
+                  {currentEvents.map((evt, idx) => (
+                    <div
+                      key={evt.id}
+                      role="group"
+                      aria-roledescription="slide"
+                      aria-label={`${idx + 1} de ${currentEvents.length}: ${evt.name}`}
+                      onClick={() => handleCardClick(evt.id)}
+                      className="w-full shrink-0 relative cursor-pointer group"
+                    >
+                      {/* Background Image with Dark Petrol Gradient Overlay */}
+                      {evt.imageUrl ? (
+                        <div className="absolute inset-0 z-0">
+                          <img
+                            src={evt.imageUrl}
+                            alt=""
+                            className="w-full h-full object-cover object-center opacity-35 group-hover:scale-105 transition-transform duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#0e3247] via-[#123E59]/85 to-[#123E59]/70" />
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#123E59] via-[#0f344b] to-[#0a2333]" />
                       )}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-white/80">
-                      <Clock className="w-4 h-4 text-[#93c5fd] shrink-0" />
-                      <span>{formatCardDate(featuredCurrentEvent.startDate, featuredCurrentEvent.endDate)}</span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <span className="px-4 py-2 rounded-lg bg-white text-[#123E59] font-extrabold text-xs sm:text-sm shadow-sm group-hover:bg-blue-50 transition-colors flex items-center gap-1.5">
-                      <span>VER CONCURSO</span>
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </span>
-                  </div>
+                      {/* Hero Content */}
+                      <div
+                        className={`relative z-10 py-5 sm:py-7 flex flex-col justify-between min-h-[190px] sm:min-h-[210px] ${
+                          currentEvents.length > 1 ? 'px-8 sm:px-14' : 'px-5 sm:px-7'
+                        }`}
+                      >
+                        {/* Top Badge: ACTUAL */}
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#A61E4D] text-white text-[11px] font-black tracking-wider uppercase shadow-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            <span>ACTUAL</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {currentEvents.length > 1 && (
+                              <span className="text-[11px] font-bold text-white/90 bg-black/25 px-2 py-0.5 rounded-full font-mono">
+                                {idx + 1} / {currentEvents.length}
+                              </span>
+                            )}
+                            <span className="text-[11px] text-white/70 font-semibold tracking-wide hidden xs:inline">
+                              En desarrollo hoy
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Center: Event Name */}
+                        <div className="my-2">
+                          <h2 className="font-display text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight group-hover:text-blue-100 transition-colors">
+                            {evt.name}
+                          </h2>
+                        </div>
+
+                        {/* Bottom: Location, Date & CTA button */}
+                        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-3 border-t border-white/15">
+                          <div className="space-y-1 text-xs sm:text-sm text-white/90">
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="w-4 h-4 text-[#93c5fd] shrink-0" />
+                              <span className="font-semibold">{evt.venue}</span>
+                              {evt.city && (
+                                <span className="text-white/70">· {evt.city}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-white/80">
+                              <Clock className="w-4 h-4 text-[#93c5fd] shrink-0" />
+                              <span>{formatCardDate(evt.startDate, evt.endDate)}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCardClick(evt.id);
+                              }}
+                              className="px-4 py-2 rounded-lg bg-white text-[#123E59] font-extrabold text-xs sm:text-sm shadow-sm hover:bg-blue-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>VER CONCURSO</span>
+                              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+
+                {/* Left and Right Navigation Arrows (only if multiple current events) */}
+                {currentEvents.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrev();
+                      }}
+                      aria-label="Concurso anterior"
+                      className="absolute left-1.5 sm:left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0e3247]/75 hover:bg-[#0e3247] text-white flex items-center justify-center border border-white/20 shadow-md backdrop-blur-xs transition-all cursor-pointer hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/60"
+                    >
+                      <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNext();
+                      }}
+                      aria-label="Concurso siguiente"
+                      className="absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0e3247]/75 hover:bg-[#0e3247] text-white flex items-center justify-center border border-white/20 shadow-md backdrop-blur-xs transition-all cursor-pointer hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/60"
+                    >
+                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                  </>
+                )}
               </div>
+
+              {/* Bottom Indicators (only if multiple current events) */}
+              {currentEvents.length > 1 && (
+                <div
+                  className="flex items-center justify-center gap-2 mt-3"
+                  role="tablist"
+                  aria-label="Selector de concurso en curso"
+                >
+                  {currentEvents.map((evt, idx) => (
+                    <button
+                      key={evt.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={idx === activeIndex}
+                      aria-label={`Ver concurso ${idx + 1} de ${currentEvents.length}: ${evt.name}`}
+                      onClick={() => goToIndex(idx)}
+                      className={`h-2 rounded-full transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#123E59] ${
+                        idx === activeIndex
+                          ? 'w-7 bg-[#123E59]'
+                          : 'w-2 bg-neutral-300 hover:bg-neutral-400'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -523,31 +741,56 @@ export const CompetitionList: React.FC = () => {
                     </div>
 
                     {/* Events on this day */}
-                    <div className="mt-1 space-y-1">
+                    <div className="mt-1 flex-1 flex flex-wrap items-center justify-center content-center gap-1 sm:gap-1.5 py-0.5">
                       {dayItem.events.map((evt) => {
-                        const isCurrent =
-                          getEventTemporalStatus(evt.startDate, evt.endDate) === 'ACTUAL';
+                        const temporalStatus =
+                          getEventTemporalStatus(evt.startDate, evt.endDate);
+                        const isCurrent = temporalStatus === 'ACTUAL';
+                        const isUpcoming = temporalStatus === 'PROXIMO';
+                        const hasCustomImage = Boolean(evt.imageUrl && evt.imageUrl.trim());
 
                         return (
                           <button
                             key={`${dayItem.dateStr}-${evt.id}`}
                             type="button"
                             onClick={() => setSelectedEventId(evt.id)}
-                            className={`w-full text-left p-1 rounded text-[10px] sm:text-[11px] font-semibold transition-colors shadow-2xs truncate block cursor-pointer border ${
-                              isCurrent
-                                ? 'bg-[#A61E4D] text-white border-[#A61E4D]'
-                                : 'bg-white hover:bg-[#123E59] hover:text-white border-neutral-200 text-[#123E59]'
+                            title={`${evt.name} (${evt.venue}) - ${
+                              isCurrent ? 'Actual' : isUpcoming ? 'Próximo' : 'Finalizado'
                             }`}
-                            title={`${evt.name} (${evt.venue})`}
+                            aria-label={`${evt.name} (${evt.venue})`}
+                            className={`relative group shrink-0 rounded-lg p-0.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-2xs ${
+                              isCurrent
+                                ? 'border-2 border-[#A61E4D] ring-1 ring-[#A61E4D]/30'
+                                : isUpcoming
+                                ? 'border border-[#123E59]/50 hover:border-[#123E59]'
+                                : 'border border-neutral-300 opacity-75 hover:opacity-100'
+                            } ${hasCustomImage ? 'bg-white' : 'bg-[#123E59]'}`}
                           >
-                            <span className="block truncate">{evt.name}</span>
-                            <span
-                              className={`hidden sm:block text-[9px] font-normal truncate ${
-                                isCurrent ? 'text-white/80' : 'text-neutral-400'
+                            <div
+                              className={`w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 flex items-center justify-center overflow-hidden rounded ${
+                                hasCustomImage ? 'bg-white' : 'bg-[#123E59] p-1'
                               }`}
                             >
-                              {evt.venue}
-                            </span>
+                              <img
+                                src={hasCustomImage ? evt.imageUrl : '/equidate-logo.png'}
+                                alt=""
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.src = '/equidate-logo.png';
+                                  e.currentTarget.parentElement?.classList.remove('bg-white');
+                                  e.currentTarget.parentElement?.classList.add('bg-[#123E59]', 'p-1');
+                                }}
+                                loading="lazy"
+                              />
+                            </div>
+
+                            {/* Status indicator without covering image */}
+                            {isCurrent && (
+                              <span
+                                className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#A61E4D] rounded-full border border-white ring-1 ring-[#A61E4D]/50 animate-pulse"
+                                aria-hidden="true"
+                              />
+                            )}
                           </button>
                         );
                       })}

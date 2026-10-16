@@ -47,6 +47,7 @@ interface EquestrianContextType {
 
   // Loading & sync state
   isLoading: boolean;
+  isAuthLoading: boolean;
   isBackendConnected: boolean;
   refreshData: () => Promise<void>;
 
@@ -100,9 +101,60 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [activeYear, setActiveYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'public' | 'admin'>('public');
+  const isCurrentRouteAdmin = useCallback((): boolean => {
+    if (typeof window === 'undefined') return false;
+    const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+    const hash = window.location.hash.toLowerCase();
+    return path === '/admin' || hash === '#/admin' || hash === '#admin';
+  }, []);
+
+  const [activeView, setActiveViewState] = useState<'public' | 'admin'>(() => {
+    if (typeof window === 'undefined') return 'public';
+    const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+    const hash = window.location.hash.toLowerCase();
+    return path === '/admin' || hash === '#/admin' || hash === '#admin' ? 'admin' : 'public';
+  });
+
+  const setActiveView = useCallback((view: 'public' | 'admin') => {
+    setActiveViewState(view);
+    if (typeof window !== 'undefined') {
+      if (view === 'admin') {
+        const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+        const hash = window.location.hash.toLowerCase();
+        if (path !== '/admin' && hash !== '#/admin' && hash !== '#admin') {
+          window.history.pushState({}, '', '/admin');
+        }
+      } else {
+        const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+        const hash = window.location.hash.toLowerCase();
+        if (path === '/admin' || hash === '#/admin' || hash === '#admin') {
+          window.history.pushState({}, '', '/');
+        }
+      }
+    }
+  }, []);
+
+  // Listen to popstate and hashchange events so typing /admin or navigating back/forward updates the view
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const shouldBeAdmin = isCurrentRouteAdmin();
+      setActiveViewState(prev => {
+        const next = shouldBeAdmin ? 'admin' : 'public';
+        return prev !== next ? next : prev;
+      });
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, [isCurrentRouteAdmin]);
+
   const [activeViewerDoc, setActiveViewerDoc] = useState<DocumentItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const requestVersion = useRef(0);
@@ -125,18 +177,23 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   useEffect(() => {
-    if (!isBackendConnected) return;
+    if (!isBackendConnected) {
+      setIsAuthLoading(false);
+      return;
+    }
     let active = true;
     supabase.auth.getSession().then(({ data, error }) => {
       if (active) {
         setSession(data.session);
         if (error) setDataError(error.message);
+        setIsAuthLoading(false);
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       requestVersion.current += 1;
       setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
       setSession(currentSession);
+      setIsAuthLoading(false);
       setAuthRevision(version => version + 1);
     });
     return () => { active = false; subscription.unsubscribe(); };
@@ -173,6 +230,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           startDate: e.start_date,
           endDate: e.end_date,
           status: e.status as EventStatus,
+          importantInfo: e.important_info || '',
           createdAt: e.created_at,
           updatedAt: e.updated_at,
         }));
@@ -308,23 +366,49 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
   const eventPayload = (entry: Partial<EquestrianEvent>) => {
     const payload: Record<string, unknown> = {};
-    const fields = { name: 'name', venue: 'venue', startDate: 'start_date', endDate: 'end_date', imageUrl: 'image_url', status: 'status' };
+    const fields = {
+      name: 'name',
+      venue: 'venue',
+      startDate: 'start_date',
+      endDate: 'end_date',
+      imageUrl: 'image_url',
+      status: 'status',
+    };
     for (const [key, column] of Object.entries(fields)) {
       if (key in entry) payload[column] = entry[key as keyof EquestrianEvent] ?? null;
+    }
+    if ('importantInfo' in entry) {
+      const val = entry.importantInfo;
+      payload.important_info = val && typeof val === 'string' && val.trim().length > 0 ? val.trim() : null;
     }
     if ('city' in entry || 'location' in entry) payload.location = entry.city ?? entry.location ?? '';
     return payload;
   };
   const addEvent: EquestrianContextType['addEvent'] = async entry => {
     requireAdmin();
-    const { data, error } = await supabase.from('events').insert(eventPayload(entry)).select('id').single();
+    const payload = eventPayload(entry);
+    let { data, error } = await supabase.from('events').insert(payload).select('id').single();
+    if (error && (error.message?.includes('important_info') || error.code === '42703')) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.important_info;
+      const res = await supabase.from('events').insert(fallbackPayload).select('id').single();
+      data = res.data;
+      error = res.error;
+    }
     if (error) throw error;
     await refreshData();
-    return data.id;
+    return data!.id;
   };
   const updateEvent: EquestrianContextType['updateEvent'] = async (id, entry) => {
     requireAdmin();
-    const { error } = await supabase.from('events').update(eventPayload(entry)).eq('id', id).select('id').single();
+    const payload = eventPayload(entry);
+    let { error } = await supabase.from('events').update(payload).eq('id', id).select('id').single();
+    if (error && (error.message?.includes('important_info') || error.code === '42703')) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.important_info;
+      const res = await supabase.from('events').update(fallbackPayload).eq('id', id).select('id').single();
+      error = res.error;
+    }
     if (error) throw error;
     await refreshData();
   };
@@ -749,7 +833,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return <EquestrianContext.Provider value={{
     events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
-    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading,
+    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
     setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus,
     addDocument, updateDocument, deleteDocument, reorderDocument,

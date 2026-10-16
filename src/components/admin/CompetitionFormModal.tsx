@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { EquestrianEvent, EventStatus } from '../../types/equestrian';
 import { X } from 'lucide-react';
+import { ImportantInfoEditor } from './ImportantInfoEditor';
 
 interface CompetitionFormModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface CompetitionFormModalProps {
     startDate: string;
     endDate: string;
     status: EventStatus;
+    importantInfo?: string;
   }) => Promise<void>;
   initialData?: EquestrianEvent | null;
 }
@@ -30,6 +32,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
   const [startDate, setStartDate] = useState('2026-10-10');
   const [endDate, setEndDate] = useState('2026-10-11');
   const [status, setStatus] = useState<EventStatus>('published');
+  const [importantInfo, setImportantInfo] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -42,6 +45,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
       setStartDate(initialData.startDate);
       setEndDate(initialData.endDate);
       setStatus(initialData.status);
+      setImportantInfo(initialData.importantInfo || '');
     } else {
       setName('');
       setVenue('');
@@ -50,6 +54,7 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
       setStartDate('2026-10-24');
       setEndDate('2026-10-25');
       setStatus('published');
+      setImportantInfo('');
     }
     setError('');
   }, [initialData, isOpen]);
@@ -85,7 +90,8 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
       imageUrl: imageUrl.trim() || undefined,
       startDate,
       endDate,
-      status
+      status,
+      importantInfo: importantInfo.trim()
     });
     onClose();
     } catch (error) { setError((error as Error).message || 'No se pudo guardar el concurso.'); }
@@ -197,6 +203,21 @@ export const CompetitionFormModal: React.FC<CompetitionFormModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm focus:outline-none focus:border-neutral-900"
               />
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider">
+                Información importante (opcional)
+              </label>
+              <span className="text-[11px] text-neutral-500">Títulos, negritas, listas y enlaces</span>
+            </div>
+            <ImportantInfoEditor
+              value={importantInfo}
+              onChange={setImportantInfo}
+              placeholder={`Ejemplo:\n## Cierre de inscripciones\nEl cierre es el **15/10/2026**.\n\n[Formulario de inscripción](https://forms.gle/...)`}
+              disabled={saving}
+            />
           </div>
 
           <div>

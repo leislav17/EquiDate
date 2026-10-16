@@ -506,5 +506,35 @@ test('Incremental migration preserves records and enforces RLS and associations'
     });
   });
 
+  await context.test('Event important_info migration supports storing, updating, and clearing rich content', async () => {
+    await db.exec(await readFile(new URL('../supabase/migrations/20261017_event_important_info.sql', import.meta.url), 'utf8'));
+
+    await asRole('authenticated', true, async () => {
+      // 1. Update important_info on published event
+      const sampleText = '## Cierre de inscripciones\n**15/10/2026**\n[Formulario](https://forms.gle/abc)';
+      await db.query('UPDATE events SET important_info=$1 WHERE id=$2', [sampleText, published]);
+
+      const res = (await db.query<{ important_info: string }>(
+        'SELECT important_info FROM events WHERE id=$1', [published]
+      )).rows[0];
+      assert.equal(res.important_info, sampleText);
+
+      // 2. Clear / delete important_info
+      await db.query('UPDATE events SET important_info=NULL WHERE id=$1', [published]);
+      const clearedRes = (await db.query<{ important_info: string | null }>(
+        'SELECT important_info FROM events WHERE id=$1', [published]
+      )).rows[0];
+      assert.equal(clearedRes.important_info, null);
+    });
+
+    // 3. Anonymous reader can read important_info from published event
+    await asRole('anon', false, async () => {
+      const rows = (await db.query<{ id: string; important_info: string | null }>(
+        'SELECT id, important_info FROM events WHERE id=$1', [published]
+      )).rows;
+      assert.equal(rows.length, 1);
+    });
+  });
+
   await db.close();
 });

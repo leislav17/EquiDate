@@ -5,6 +5,7 @@ import { EquestrianEvent } from '../../types/equestrian';
 import { CompetitionFormModal } from './CompetitionFormModal';
 import { TestsManager, TransmissionManager } from './ScheduleManager';
 import { DocumentManagerModal } from './DocumentManagerModal';
+import { ImportantInfoModal } from './ImportantInfoModal';
 import {
   Plus,
   Edit,
@@ -15,7 +16,8 @@ import {
   EyeOff,
   ExternalLink,
   MapPin,
-  Calendar
+  Calendar,
+  Info
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -40,6 +42,7 @@ export const AdminDashboard: React.FC = () => {
   const [docManagerEvent, setDocManagerEvent] = useState<EquestrianEvent | null>(null);
   const [transmissionEvent, setTransmissionEvent] = useState<EquestrianEvent | null>(null);
   const [scheduleEvent, setScheduleEvent] = useState<EquestrianEvent | null>(null);
+  const [infoEvent, setInfoEvent] = useState<EquestrianEvent | null>(null);
   const handleOpenCreate = () => {
     setEditingEvent(null);
     setIsFormOpen(true);
@@ -53,9 +56,12 @@ export const AdminDashboard: React.FC = () => {
   const handleSaveEvent = async (data: {
     name: string;
     venue: string;
+    city?: string;
+    imageUrl?: string;
     startDate: string;
     endDate: string;
     status: 'published' | 'draft';
+    importantInfo?: string;
   }) => {
     if (editingEvent) {
       await updateEvent(editingEvent.id, data);
@@ -122,6 +128,20 @@ export const AdminDashboard: React.FC = () => {
 
       {scheduleEvent && <TestsManager event={scheduleEvent} onClose={() => setScheduleEvent(null)} />}
       {transmissionEvent && <TransmissionManager event={transmissionEvent} onClose={() => setTransmissionEvent(null)} />}
+      {infoEvent && (
+        <ImportantInfoModal
+          key={infoEvent.id}
+          event={infoEvent}
+          isOpen={!!infoEvent}
+          onClose={() => setInfoEvent(null)}
+          onSave={async (eventId, text) => {
+            await updateEvent(eventId, { importantInfo: text });
+          }}
+          onDelete={async (eventId) => {
+            await updateEvent(eventId, { importantInfo: '' });
+          }}
+        />
+      )}
       {/* List of competitions */}
       <div className="space-y-3">
         {events.length === 0 ? (
@@ -201,6 +221,19 @@ export const AdminDashboard: React.FC = () => {
                   {/* Manage Documents */}
                   <button type="button" onClick={() => setScheduleEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Pruebas</button>
                   <button type="button" onClick={() => setTransmissionEvent(evt)} className="px-3 py-2 rounded-lg bg-blue-50 text-[#123E59] text-xs font-bold">Transmisión</button>
+                  <button
+                    type="button"
+                    onClick={() => setInfoEvent(evt)}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      evt.importantInfo?.trim()
+                        ? 'bg-[#123E59]/10 text-[#123E59] hover:bg-[#123E59]/15'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                    }`}
+                    title="Editar Información Importante del concurso"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    <span>Info importante{evt.importantInfo?.trim() ? ' ✓' : ''}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setDocManagerEvent(evt)}

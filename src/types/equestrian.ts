@@ -24,6 +24,7 @@ export interface EquestrianEvent {
   startDate: string;  // YYYY-MM-DD (Database column start_date)
   endDate: string;    // YYYY-MM-DD (Database column end_date)
   status: EventStatus;
+  importantInfo?: string; // Database column important_info
   createdAt: string;
   updatedAt: string;
 }

@@ -14,11 +14,13 @@ import {
   MapPin,
   Calendar,
   CheckCircle2,
-  ArrowUpRight
+  ArrowUpRight,
+  Info
 } from 'lucide-react';
 import { DayProgram } from './DayProgram';
 import { TransmissionButton } from './Transmission';
 import { DocumentItem } from '../../types/equestrian';
+import { renderRichText } from '../../utils/richText';
 
 export const CompetitionDetail: React.FC = () => {
   const {
@@ -53,6 +55,7 @@ export const CompetitionDetail: React.FC = () => {
 
   // Accordion states for days
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   // Generate days between startDate and endDate
   const days = useMemo(() => {
@@ -167,8 +170,50 @@ export const CompetitionDetail: React.FC = () => {
         </div>
 
         {scheduleError && <p role="status" className="mb-4 text-sm text-neutral-600">{scheduleError}</p>}
-        {/* Content Hierarchy: ANTEPROGRAMA -> REGLAMENTO -> OTROS DOCUMENTOS -> DÍAS */}
+        {/* Content Hierarchy: INFORMACIÓN IMPORTANTE -> ANTEPROGRAMA -> REGLAMENTO -> OTROS DOCUMENTOS -> DÍAS */}
         <div className="space-y-3">
+          {/* ======================================================== */}
+          {/* INFORMACIÓN IMPORTANTE (Solo si existe contenido cargado) */}
+          {/* ======================================================== */}
+          {event.importantInfo && event.importantInfo.trim() && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setIsInfoOpen(prev => !prev)}
+                aria-expanded={isInfoOpen}
+                className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Info className="w-5 h-5 text-[#93c5fd] shrink-0" />
+                  <span className="font-display text-base sm:text-lg font-black tracking-wide truncate">
+                    INFORMACIÓN IMPORTANTE
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-white/80 font-medium hidden sm:inline">
+                    {isInfoOpen ? 'Ocultar' : 'Ver información'}
+                  </span>
+                  <div className="w-8 h-8 rounded-full bg-white/15 group-hover:bg-white/25 flex items-center justify-center transition-colors">
+                    {isInfoOpen ? (
+                      <ChevronUp className="w-5 h-5 text-white" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              {isInfoOpen && (
+                <div className="bg-white border border-neutral-200/90 rounded-2xl p-5 sm:p-6 shadow-xs animate-in fade-in-50 duration-200">
+                  <div className="space-y-2 text-neutral-800">
+                    {renderRichText(event.importantInfo)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ======================================================== */}
           {/* 1. DOCUMENTOS GENERALES (Solo si existen)                */}
           {/* ======================================================== */}

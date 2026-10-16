@@ -14,6 +14,7 @@ const AppContent: React.FC = () => {
     selectedEventId,
     viewingDocumentId,
     isAdmin,
+    isAuthLoading,
     isLoading,
     dataError,
     refreshData
@@ -44,9 +45,22 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {transmissionId ? <TransmissionPage dayId={transmissionId} /> : activeView === 'admin' ? (
-          isAdmin ? <AdminDashboard /> : <AdminLogin />
-        ) : isLoading ? <p role="status" className="p-8 text-center">Cargando concursos…</p> : dataError ? null : selectedEventId ? (
+        {transmissionId ? (
+          <TransmissionPage dayId={transmissionId} />
+        ) : activeView === 'admin' ? (
+          isAuthLoading ? (
+            <div className="w-full min-h-[calc(100vh-64px)] flex items-center justify-center p-8 text-neutral-500 font-medium text-sm">
+              <div className="w-5 h-5 border-2 border-[#123E59] border-t-transparent rounded-full animate-spin mr-3" />
+              <span>Verificando acceso…</span>
+            </div>
+          ) : isAdmin ? (
+            <AdminDashboard />
+          ) : (
+            <AdminLogin />
+          )
+        ) : isLoading ? (
+          <p role="status" className="p-8 text-center">Cargando concursos…</p>
+        ) : dataError ? null : selectedEventId ? (
           <CompetitionDetail />
         ) : (
           <CompetitionList />

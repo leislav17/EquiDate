@@ -221,7 +221,8 @@ export function TestsManager({ event, onClose }: { event: EquestrianEvent; onClo
               </h3>
             </div>
 
-            {dayArenas.map((arena, arenaIdx) => {
+            {dayArenas.map(arena => {
+              const arenaIdx = sortedEventArenas.findIndex(item => item.id === arena.id);
               const arenaClasses = sortClasses(dayClasses.filter(item => item.arenaId === arena.id));
               if (arenaClasses.length === 0) return null;
 

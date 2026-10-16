@@ -42,6 +42,9 @@ export function formatClassSchedule(item?: {
 }
 
 export function sortClasses(entries: CompetitionClass[]): CompetitionClass[] {
+  const ordersWithoutTime = new Set(entries
+    .filter(entry => !(entry.time || '').trim())
+    .map(entry => typeof entry.order === 'number' ? entry.order : 0));
   return [...entries].sort((first, second) => {
     // 1. Prioridad principal: Orden de visualización configurado
     const orderA = typeof first.order === 'number' ? first.order : 0;
@@ -53,7 +56,7 @@ export function sortClasses(entries: CompetitionClass[]): CompetitionClass[] {
     // 2. Si el orden relativo es igual: los horarios ayudan al orden inicial si ambos tienen horario
     const timeA = (first.time || '').trim().slice(0, 5);
     const timeB = (second.time || '').trim().slice(0, 5);
-    if (timeA && timeB && timeA !== timeB) {
+    if (!ordersWithoutTime.has(orderA) && timeA && timeB && timeA !== timeB) {
       return timeA.localeCompare(timeB);
     }
 

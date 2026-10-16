@@ -72,6 +72,21 @@ test('Classes respect configured manual order, natural number/letter collation, 
   assert.deepEqual(sortClasses(numericClasses as any).map(c => c.id), ['class_1', 'class_2', 'class_10']);
 });
 
+test('Tied orders with missing times sort consistently regardless of incoming row order', () => {
+  const first = { id: 'first', order: 1, number: '1', time: '12:00' };
+  const second = { id: 'second', order: 1, number: '2', time: '' };
+  const third = { id: 'third', order: 1, number: '3', time: '09:00' };
+  const permutations = [
+    [first, second, third], [first, third, second],
+    [second, first, third], [second, third, first],
+    [third, first, second], [third, second, first],
+  ];
+  for (const entries of permutations) {
+    assert.deepEqual(sortClasses(entries as any).map(entry => entry.id), ['first', 'second', 'third']);
+  }
+  assert.deepEqual(sortClasses([first, third] as any).map(entry => entry.id), ['third', 'first']);
+});
+
 test('Class schedule public display: exact time, approximate time, continuous, and no text when empty', () => {
   // 1. Exact time: "09:00 hs"
   assert.equal(formatClassSchedule({ time: '09:00', isApproximate: false, isContinuous: false }), '09:00 hs');

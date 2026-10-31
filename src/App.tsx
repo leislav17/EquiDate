@@ -7,6 +7,7 @@ import { CompetitionDetail } from './components/public/CompetitionDetail';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
+import { StartListView } from './components/public/StartListView';
 
 const AppContent: React.FC = () => {
   const {
@@ -27,6 +28,9 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
+  if (hash.startsWith('#start-list/') && !isLoading && !dataError) {
+    return <StartListView key={hash} classId={hash.slice(12)} />;
+  }
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"

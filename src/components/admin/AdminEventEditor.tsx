@@ -7,6 +7,7 @@ import { ScheduleSection } from './sections/ScheduleSection';
 import { DocumentsSection } from './sections/DocumentsSection';
 import { TransmissionSection } from './sections/TransmissionSection';
 import { ImportantInfoSection } from './sections/ImportantInfoSection';
+import { StartListManager } from './StartListManager';
 import {
   ArrowLeft,
   ExternalLink,
@@ -21,7 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info';
+export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info' | 'start-lists';
 
 interface AdminEventEditorProps {
   eventId: string | 'new';
@@ -51,7 +52,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab') as AdminTab | null;
-      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info'].includes(tabParam)) {
+      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info', 'start-lists'].includes(tabParam)) {
         return tabParam;
       }
     }
@@ -148,6 +149,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
     { id: 'general', label: 'Información general', icon: Info },
     { id: 'schedule', label: 'Jornadas y pruebas', icon: Layers, disabled: isNew },
     { id: 'documents', label: 'Documentos', icon: Files, disabled: isNew },
+    { id: 'start-lists', label: 'Órdenes de ingreso', icon: Layers, disabled: isNew },
     { id: 'transmission', label: 'Transmisión', icon: Video, disabled: isNew },
     { id: 'info', label: 'Información importante', icon: Calendar, disabled: isNew },
   ];
@@ -290,6 +292,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
           {activeTab === 'info' && event && (
             <ImportantInfoSection event={event} onDirtyChange={setIsDirty} />
           )}
+          {activeTab === 'start-lists' && event && <StartListManager key={event.id} eventId={event.id} />}
         </div>
       </div>
 

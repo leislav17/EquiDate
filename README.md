@@ -3,6 +3,8 @@
 Calendario mobile-first de concursos hípicos con Supabase como fuente de verdad.
 Incluye anteprogramas, pruebas por jornada, listados, resultados y transmisiones de YouTube.
 
+Órdenes de ingreso estructurados: ver [modelo, importación desde ChatGPT y compatibilidad histórica](docs/ORDENES_INGRESO.md). La migración `supabase/migrations/20261031164507_structured_start_lists.sql` se aplica primero en TEST. `main` corresponde a TEST y `production` a producción; no publicar producción sin autorización.
+
 ## Desarrollo
 
 Requiere Node 24.

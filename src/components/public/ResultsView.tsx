@@ -50,7 +50,7 @@ export function ResultRows({ entries, columns: sourceColumns }: { entries: Resul
         <caption className="sr-only">Puesto, caballo, jinete, club, categoría y resultados. Faltas: número informado o, cuando existe desglose, obstáculos más penalizaciones por tiempo entre paréntesis. Tpo.: tiempo del recorrido. Total: faltas finales. Dif.: diferencia al tiempo óptimo.</caption>
         <colgroup><col style={{ width: 'var(--result-place-width)' }} /><col />{columns.map(col => <col key={col.key} style={{ width: metric(col).width }} />)}</colgroup>
         <thead className="bg-[#123E59] text-white"><tr>
-          <th scope="col" rowSpan={grouped ? 2 : 1} className="result-place result-frozen-heading" aria-label="Puesto"><abbr title="Puesto" className="no-underline">P.</abbr></th>
+          <th scope="col" rowSpan={grouped ? 2 : 1} className="result-place result-frozen-heading" aria-label="Puesto" />
           <th scope="col" rowSpan={grouped ? 2 : 1} className="result-person result-frozen-heading"><span className="sm:grid sm:grid-cols-2 sm:gap-x-3"><span>Caballo<span className="sm:hidden"> / Jinete</span></span><span className="hidden sm:inline">Jinete</span></span><span className="block text-[9px] sm:text-[10px] font-normal text-white/75 mt-0.5">Club · Categoría</span></th>
           {groups.map((group,i) => group.label ? <th key={i} scope="colgroup" colSpan={group.columns.length} className="result-group-heading">{group.label}</th> : <Fragment key={i}>{group.columns.map(col => header(col, grouped ? 2 : 1))}</Fragment>)}
         </tr>{grouped && <tr>{groups.filter(g => g.label).flatMap(g => g.columns).map(col => header(col))}</tr>}</thead>

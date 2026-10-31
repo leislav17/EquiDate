@@ -44,8 +44,7 @@
 .results-table .result-person { position: sticky; left: var(--result-place-width); padding: 12px 8px 12px 4px; vertical-align: top; }
 .results-table .result-frozen-heading { z-index: 3; background: #123E59; vertical-align: middle; }
 .results-table .result-frozen-cell { z-index: 1; background: white; }
-.results-table .result-person { box-shadow: 1px 0 0 #e5e7eb; }
-.results-table .result-group-heading { padding: 9px 2px 4px; font-size: 10px; text-align: center; border-left: 1px solid #ffffff25; }
+.results-table .result-group-heading { padding: 9px 2px 4px; font-size: 10px; text-align: center; }
 .results-table .result-metric-heading { padding: 8px 2px; text-align: center; vertical-align: middle; font-size: 10px; line-height: 1.2; overflow-wrap: anywhere; }
 .results-table .result-metric-cell { padding: 12px 2px; text-align: center; vertical-align: top; white-space: nowrap; font-weight: 500; }
 .results-table tbody td { border-bottom: 1px solid #e5e7eb; }

@@ -26,9 +26,10 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
   const query = search.trim().toLocaleLowerCase();
   const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.category || ''} ${row.club || ''} ${row.position}`.toLocaleLowerCase().includes(query)) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
-  return <section className={embedded ? '@container bg-white text-neutral-900 rounded-xl border border-neutral-200 p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-white text-neutral-900 px-4 sm:px-8 py-5 sm:py-8'} aria-label="Listado de la prueba">
+  return <section className={embedded ? '@container bg-white text-neutral-900 rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-[#f4f6f8] text-neutral-900 px-4 sm:px-8 py-6'} aria-label="Listado de la prueba">
     <div className="max-w-5xl mx-auto">
       <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />{embedded ? 'Volver a las pruebas de la jornada' : 'Volver al concurso'}</button>
+      <div className={embedded ? '' : 'mt-4 bg-white border border-neutral-200/80 rounded-2xl p-4 sm:p-6 shadow-xs'}>
       {startListsError ? <div role="alert" className="py-8">{startListsError}<button className="underline ml-2 min-h-11" onClick={() => void refreshData()}>Reintentar</button></div> : !entry || !list ? <p className="py-8">Este listado no está publicado.</p> : <>
         <p className={`text-sm text-neutral-500 mt-6 break-words ${desktopMetadataBelowVideo ? 'lg:hidden' : ''}`}>{events.find(e => e.id === entry.eventId)?.name} · {entry.date.split('-').reverse().join('/')} · {arenas.find(a => a.id === entry.arenaId)?.name}</p>
         <div className="flex items-start justify-between gap-3 mt-2">
@@ -42,6 +43,7 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}
       </>}
+      </div>
     </div>
   </section>;
 }

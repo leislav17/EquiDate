@@ -31,14 +31,15 @@ export function TransmissionButton({ day }: { day: CompetitionDay }) {
 }
 
 function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: string; youtubeUrl: string }) {
-  const { arenas, documents, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
+  const { arenas, classes, documents, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
   const [selectedList, setSelectedList] = useState<{ kind: 'structured' | 'document'; id: string } | null>(null);
   const videoRef = useRef<HTMLDivElement>(null);
   const listsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Keep the selected list below the pinned player without restarting playback.
     if (selectedList && listsRef.current) {
-      if (selectedList.kind === 'structured' && window.matchMedia('(min-width: 1024px)').matches) {
+      if (window.matchMedia('(min-width: 1024px)').matches) {
+        listsRef.current.scrollTop = 0;
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -52,9 +53,9 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const videoId = getYouTubeId(youtubeUrl);
   const arena = arenas.find(item => item.id === arenaId);
   const multiple = arenas.filter(item => item.eventId === day.eventId).length > 1;
-  const sidebar = selectedList?.kind === 'structured';
-  return <div className={sidebar ? 'max-w-[1600px] mx-auto lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6' : 'max-w-4xl mx-auto'}>
-    {videoId ? <div ref={videoRef} className="sticky top-[65px] z-30 bg-black lg:col-start-1 lg:row-start-1">
+  const selectedClass = classes.find(c => c.id === (selectedList?.kind === 'structured' ? selectedList.id : selectedDocument?.classId));
+  return <div className="max-w-4xl mx-auto lg:max-w-[1600px] lg:px-6 lg:pt-6 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6">
+    {videoId ? <div ref={videoRef} className="sticky top-[65px] lg:top-[89px] z-30 bg-black lg:col-start-1 lg:row-start-1">
       <div className="aspect-video max-h-[50svh] w-full overflow-hidden">
         <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
           title={'Transmisión de ' + event?.name + ' · ' + day.date + (arena ? ' · ' + arena.name : '')}
@@ -69,11 +70,12 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
     </button>
     <p className="text-xs font-bold text-[#A61E4D]">{formatDayHeader(day.date).fullFormatted}</p>
     <h1 className="font-display text-2xl font-black text-[#123E59] mt-1 mb-4">{event?.name}</h1>
+    {selectedClass && <div className="hidden lg:block mb-4"><p className="text-xs font-bold text-[#A61E4D]">Prueba {selectedClass.number}</p><h2 className="font-display text-xl font-bold text-[#123E59]">{selectedClass.name}</h2><p className="text-sm text-neutral-700 mt-1">{selectedClass.description}</p><p className="text-sm text-neutral-500">{arenas.find(a => a.id === selectedClass.arenaId)?.name}</p></div>}
     <p className="text-xs font-bold mb-3">{label === 'VER EN VIVO' ? 'EN VIVO · Transmisión de la jornada' : 'Transmisión de la jornada'}</p>
     {multiple && <h2 className="font-bold text-[#123E59] mb-4">{arena?.name}</h2>}
     </div>
-    <div ref={listsRef} className={sidebar ? 'px-4 pb-6 min-w-0 lg:px-0 lg:pr-4 lg:py-4 lg:sticky lg:top-[65px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-65px)] lg:overflow-y-auto' : 'px-4 pb-6 scroll-mt-20'}>
-      {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
+    <div ref={listsRef} className="px-4 pb-6 min-w-0 scroll-mt-20 lg:px-0 lg:sticky lg:top-[89px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-113px)] lg:overflow-y-auto">
+      {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded desktopMetadataBelowVideo onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
           <button onClick={() => setSelectedList(null)} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver a las pruebas de la jornada</button>
           {selectedDocument ? <DocumentViewer document={selectedDocument} mode="inline" /> : <p>Este listado ya no está disponible.</p>}

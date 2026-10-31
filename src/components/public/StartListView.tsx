@@ -13,7 +13,7 @@ export function StartListRows({ entries }: { entries: StartEntry[] }) {
     </li>)}
   </ol>;
 }
-export function StartListView({ classId, onBack, embedded = false }: { classId: string; onBack?: () => void; embedded?: boolean }) {
+export function StartListView({ classId, onBack, embedded = false, desktopMetadataBelowVideo = false }: { classId: string; onBack?: () => void; embedded?: boolean; desktopMetadataBelowVideo?: boolean }) {
   const { classes, arenas, events, startHeads, startVersions, documents, startListsError, refreshData, setSelectedEventId } = useEquestrian();
   const [search, setSearch] = useState('');
   const entry = classes.find(c => c.id === classId);
@@ -28,9 +28,9 @@ export function StartListView({ classId, onBack, embedded = false }: { classId: 
     <div className="max-w-5xl mx-auto">
       <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />{embedded ? 'Volver a las pruebas de la jornada' : 'Volver al concurso'}</button>
       {startListsError ? <div role="alert" className="py-8">{startListsError}<button className="underline ml-2 min-h-11" onClick={() => void refreshData()}>Reintentar</button></div> : !entry || !list ? <p className="py-8">Este listado no está publicado.</p> : <>
-        <p className="text-sm text-neutral-500 mt-6 break-words">{events.find(e => e.id === entry.eventId)?.name} · {entry.date.split('-').reverse().join('/')} · {arenas.find(a => a.id === entry.arenaId)?.name}</p>
+        <p className={`text-sm text-neutral-500 mt-6 break-words ${desktopMetadataBelowVideo ? 'lg:hidden' : ''}`}>{events.find(e => e.id === entry.eventId)?.name} · {entry.date.split('-').reverse().join('/')} · {arenas.find(a => a.id === entry.arenaId)?.name}</p>
         <div className="flex items-start justify-between gap-3 mt-2">
-          <div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-[#A61E4D]">Prueba {entry.number}</p><Heading className="font-display text-2xl sm:text-3xl font-bold text-[#123E59] break-words">{entry.name}</Heading></div>
+          <div className={`min-w-0 ${desktopMetadataBelowVideo ? 'lg:hidden' : ''}`}><p className="text-xs font-bold uppercase tracking-wider text-[#A61E4D]">Prueba {entry.number}</p><Heading className="font-display text-2xl sm:text-3xl font-bold text-[#123E59] break-words">{entry.name}</Heading></div>
           {pdf && <a href={downloadUrl} download aria-label="Descargar listado en PDF" title="Descargar listado en PDF" className="shrink-0 min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg border border-neutral-200 text-[#123E59]"><Download size={20} /></a>}
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>

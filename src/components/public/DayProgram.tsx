@@ -60,23 +60,25 @@ export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: 
             </div>
           </div>
 
-          {/* Cantidad de participantes en la esquina superior derecha */}
+        </div>
+        <div className="mt-4 flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+            {attached.map(action)}
+            {!attached.some(doc => doc.type === 'START_LIST') && (
+              <span className="inline-flex items-center gap-2 text-xs text-neutral-500 min-h-11 px-3">
+                <Bell className="w-4 h-4" />
+                Listado pendiente
+              </span>
+            )}
+          </div>
           {hasParticipants && (
             <div
-              className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-semibold ml-2 select-none"
+              className="shrink-0 rounded-lg bg-neutral-100 px-2.5 py-1 text-center text-xs font-semibold text-neutral-700 select-none"
               title={`Cantidad de participantes: ${entry.participantCount}`}
             >
-              <span>Cantidad de participantes: {entry.participantCount}</span>
+              <span className="block">Participantes:</span>
+              <span className="block">{entry.participantCount}</span>
             </div>
-          )}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {attached.map(action)}
-          {!attached.some(doc => doc.type === 'START_LIST') && (
-            <span className="inline-flex items-center gap-2 text-xs text-neutral-500 min-h-11 px-3">
-              <Bell className="w-4 h-4" />
-              Listado pendiente
-            </span>
           )}
         </div>
       </article>

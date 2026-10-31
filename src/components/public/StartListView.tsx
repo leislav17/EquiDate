@@ -5,11 +5,13 @@ import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists
 
 export function StartListRows({ entries }: { entries: StartEntry[] }) {
   return <ol className="divide-y divide-neutral-200" aria-label="Orden de ingreso">
-    {entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-x-3 gap-y-1 py-5">
+    {entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-x-3 gap-y-1 py-5">
       <span className="row-span-3 @min-[36rem]:row-span-1 text-neutral-500 tabular-nums">{row.position}.</span>
-      <span className="col-start-2 row-start-1 @min-[36rem]:col-start-3 font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>
-      <span className="col-start-2 row-start-2 @min-[36rem]:row-start-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span>
-      {(row.category || row.club) && <span className="col-start-2 row-start-3 @min-[36rem]:col-start-4 @min-[36rem]:row-start-1 text-sm text-neutral-500 @min-[36rem]:text-right break-words [overflow-wrap:anywhere]">{[row.category, row.club].filter(Boolean).join(' · ')}</span>}
+      <span className="col-start-2 row-start-1 font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>
+      <span className="col-start-2 row-start-2 @min-[36rem]:col-start-3 @min-[36rem]:row-start-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span>
+      {(row.category || row.club) && <span className="col-start-2 row-start-3 @min-[36rem]:hidden text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{[row.category, row.club].filter(Boolean).join(' · ')}</span>}
+      <span className="hidden @min-[36rem]:block col-start-4 row-start-1 text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.category}</span>
+      <span className="hidden @min-[36rem]:block col-start-5 row-start-1 text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.club}</span>
     </li>)}
   </ol>;
 }
@@ -35,7 +37,7 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>
         <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo, categoría o club" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo, categoría o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Orden</span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block text-right">Categoría · Club</span></div>
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Orden</span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
         <StartListRows entries={rows} />
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}

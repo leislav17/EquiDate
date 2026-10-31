@@ -3,12 +3,19 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import { sortClasses, sortArenas, formatClassSchedule } from '../../utils/schedule';
 import { documentTypeLabel, isGeneralDocumentType } from '../../utils/documents';
 import { DocumentItem } from '../../types/equestrian';
+import { publishedStartList, startParticipantCount } from '../../utils/startLists';
+import { publishedResults } from '../../utils/results';
 
-export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: string; arenaId?: string }) {
-  const { classes, arenas, documents, setViewingDocumentId } = useEquestrian();
+export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenListDocument, showResults = true }: {
+  eventId: string; date: string; arenaId?: string;
+  onOpenStartList?: (classId: string) => void;
+  onOpenListDocument?: (document: DocumentItem) => void;
+  showResults?: boolean;
+}) {
+  const { classes, arenas, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
 
   const allDayClasses = classes.filter(entry => entry.eventId === eventId && entry.date === date);
-  const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type));
+  const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type) && (showResults || doc.type !== 'RESULT'));
   const unassigned = arenaId ? [] : dayDocuments.filter(doc => !doc.classId);
 
   // If specific arenaId requested (e.g. in transmission editor), filter by it, else sort all event arenas
@@ -31,7 +38,7 @@ export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: 
     <button
       key={doc.id}
       title={doc.name}
-      onClick={() => setViewingDocumentId(doc.id)}
+      onClick={() => doc.type === 'START_LIST' && onOpenListDocument ? onOpenListDocument(doc) : setViewingDocumentId(doc.id)}
       className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left cursor-pointer"
     >
       {doc.type === 'RESULT' ? <Award className="w-4 h-4 shrink-0" /> : <Bell className="w-4 h-4 shrink-0" />}
@@ -44,7 +51,10 @@ export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: 
     const scheduleLabel = formatClassSchedule(entry);
     const ident = (entry.number || '').trim();
     const identLabel = !ident ? 'Prueba' : ident.toLowerCase().startsWith('prueba') ? ident : `Prueba ${ident}`;
-    const hasParticipants = typeof entry.participantCount === 'number' && entry.participantCount !== null;
+    const list = publishedStartList(entry.id, startHeads, startVersions);
+    const results = showResults ? publishedResults(entry.id, resultHeads, resultVersions) : undefined;
+    const participantCount = startParticipantCount(list, entry.participantCount);
+    const hasParticipants = typeof participantCount === 'number';
 
     return (
       <article key={entry.id} className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-2xs">
@@ -63,21 +73,19 @@ export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: 
         </div>
         <div className="mt-4 flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-2">
-            {attached.map(action)}
-            {!attached.some(doc => doc.type === 'START_LIST') && (
-              <span className="inline-flex items-center gap-2 text-xs text-neutral-500 min-h-11 px-3">
-                <Bell className="w-4 h-4" />
-                Listado pendiente
-              </span>
-            )}
+            {list && <a href={`#start-list/${entry.id}`} onClick={e => {
+              if (onOpenStartList && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onOpenStartList(entry.id); }
+            }} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Bell className="w-4 h-4" />Listado</a>}
+            {results && <a href={`#results/${entry.id}`} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Award className="w-4 h-4" />Resultados</a>}
+            {attached.filter(doc => (!list || doc.type !== 'START_LIST') && (!results || doc.type !== 'RESULT')).map(action)}
           </div>
           {hasParticipants && (
             <div
               className="shrink-0 rounded-lg bg-neutral-100 px-2.5 py-1 text-center text-xs font-semibold text-neutral-700 select-none"
-              title={`Cantidad de participantes: ${entry.participantCount}`}
+              title={`Cantidad de participantes: ${participantCount}${list ? ' (listado publicado)' : ''}`}
             >
               <span className="block">Participantes:</span>
-              <span className="block">{entry.participantCount}</span>
+              <span className="block">{participantCount}</span>
             </div>
           )}
         </div>

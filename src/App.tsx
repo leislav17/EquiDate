@@ -7,6 +7,8 @@ import { CompetitionDetail } from './components/public/CompetitionDetail';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLogin } from './components/admin/AdminLogin';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
+import { StartListView } from './components/public/StartListView';
+import { ResultsView } from './components/public/ResultsView';
 
 const AppContent: React.FC = () => {
   const {
@@ -27,6 +29,8 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
+  const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
+  const resultsId = hash.startsWith('#results/') ? hash.slice(9) : null;
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -45,7 +49,13 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {transmissionId ? (
+        {resultsId ? (
+          isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>
+            : dataError ? null : <ResultsView key={resultsId} classId={resultsId} />
+        ) : startListId ? (
+          isLoading ? <p role="status" className="p-8 text-center">Cargando listado…</p>
+            : dataError ? null : <StartListView key={startListId} classId={startListId} />
+        ) : transmissionId ? (
           <TransmissionPage dayId={transmissionId} />
         ) : activeView === 'admin' ? (
           isAuthLoading ? (

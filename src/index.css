@@ -20,3 +20,41 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* A single results row on every screen; only the score area scrolls past the identity. */
+.results-table-shell {
+  --result-place-width: 1.75rem;
+  --result-person-min: 7rem;
+  --result-score-width: 2.25rem;
+  --result-time-width: 2.5rem;
+  --result-total-width: 1.75rem;
+  --result-extra-width: 3.5rem;
+}
+.results-table {
+  width: 100%;
+  min-width: calc(var(--result-place-width) + var(--result-person-min) + var(--result-metrics-width));
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.results-table th { font-weight: 600; }
+.results-table .result-place { position: sticky; left: 0; text-align: center; padding: 12px 3px; vertical-align: top; overflow-wrap: anywhere; }
+.results-table .result-person { position: sticky; left: var(--result-place-width); padding: 12px 8px 12px 4px; vertical-align: top; }
+.results-table .result-frozen-heading { z-index: 3; background: #123E59; vertical-align: middle; }
+.results-table .result-frozen-cell { z-index: 1; background: white; }
+.results-table .result-group-heading { padding: 9px 2px 4px; font-size: 10px; text-align: center; }
+.results-table .result-metric-heading { padding: 8px 2px; text-align: center; vertical-align: middle; font-size: 10px; line-height: 1.2; overflow-wrap: anywhere; }
+.results-table .result-metric-cell { padding: 12px 2px; text-align: center; vertical-align: top; white-space: nowrap; font-weight: 500; }
+.results-table tbody td { border-bottom: 1px solid #e5e7eb; }
+.results-table tbody .result-category-start td { border-top: 3px solid #A61E4D; }
+.results-table tbody tr:last-child td { border-bottom: 0; }
+.results-table tbody tr:hover td { background-color: #f7fafc; }
+.results-table-shell [role="region"]:focus-visible { outline: 2px solid #123e5955; outline-offset: 2px; }
+@media (min-width: 640px) {
+  .results-table-shell { --result-place-width: 2rem; --result-person-min: 14rem; --result-score-width: 2.75rem; --result-time-width: 3.25rem; --result-total-width: 2.5rem; --result-extra-width: 4rem; }
+  .results-table { font-size: 12px; }
+  .results-table .result-metric-heading, .results-table .result-group-heading { font-size: 11px; }
+  .results-table .result-person { padding-right: 14px; }
+}

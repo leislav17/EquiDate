@@ -5,6 +5,8 @@ import { Session } from '@supabase/supabase-js';
 import { documentAssociation, documentLabel, isGeneralDocumentType } from '../utils/documents';
 import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
 import { getArgentinaDate } from '../utils/dateUtils';
+import { StartHead, StartVersion, StartImport, reviewStartImport } from '../utils/startLists';
+import { ResultVersion, ResultImport, reviewResultImport } from '../utils/results';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -14,6 +16,16 @@ export interface DocumentPageInput {
 }
 
 interface EquestrianContextType {
+  resultHeads: StartHead[];
+  resultVersions: ResultVersion[];
+  resultsError: string | null;
+  importResults: (batch: ResultImport[]) => Promise<void>;
+  unpublishResults: (classId: string, revision: string) => Promise<void>;
+  startHeads: StartHead[];
+  startVersions: StartVersion[];
+  startListsError: string | null;
+  importStartLists: (batch: StartImport[]) => Promise<void>;
+  unpublishStartList: (classId: string, revision: string) => Promise<void>;
   events: EquestrianEvent[];
   days: CompetitionDay[];
   arenas: CompetitionArena[];
@@ -91,6 +103,12 @@ const EquestrianContext = createContext<EquestrianContextType | undefined>(undef
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string })?.message || 'No se pudo completar la operación.');
 
 export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [resultHeads, setResultHeads] = useState<StartHead[]>([]);
+  const [resultVersions, setResultVersions] = useState<ResultVersion[]>([]);
+  const [resultsError, setResultsError] = useState<string | null>(null);
+  const [startHeads, setStartHeads] = useState<StartHead[]>([]);
+  const [startVersions, setStartVersions] = useState<StartVersion[]>([]);
+  const [startListsError, setStartListsError] = useState<string | null>(null);
   const [events, setEvents] = useState<EquestrianEvent[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [arenas, setArenas] = useState<CompetitionArena[]>([]);
@@ -213,6 +231,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       requestVersion.current += 1;
       setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
       setSession(currentSession);
+      setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
       setIsAuthLoading(false);
       setAuthRevision(version => version + 1);
     });
@@ -225,7 +244,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(false);
       return;
     }
-    setIsLoading(true); setDataError(null); setScheduleError(null); setArenaError(null);
+    setIsLoading(true); setDataError(null); setScheduleError(null); setArenaError(null); setStartListsError(null); setResultsError(null);
     try {
       const [eventResponse, documentResponse, pageResponse] = await Promise.all([
         supabase.from('events').select('*').order('start_date'),
@@ -337,6 +356,43 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           participantCount: typeof entry.participant_count === 'number' ? entry.participant_count : null,
         })));
       }
+      // One joined query keeps the published pointer and its entries in the same snapshot.
+      const loadedHeads: StartHead[] = [], loadedVersions: StartVersion[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const response = await supabase.from('start_lists')
+          .select('*,version:start_list_versions!start_lists_class_id_version_id_fkey(*)')
+          .order('class_id').range(offset, offset + 499);
+        if (version !== requestVersion.current) return;
+        if (response.error) {
+          setStartListsError('No pudimos cargar los listados estructurados. ' + response.error.message);
+          loadedHeads.length = 0; loadedVersions.length = 0; break;
+        }
+        for (const row of response.data || []) {
+          loadedHeads.push({ class_id: row.class_id, version_id: row.version_id, revision: row.revision });
+          const linked = Array.isArray(row.version) ? row.version[0] : row.version;
+          if (linked) loadedVersions.push(linked as unknown as StartVersion);
+        }
+        if ((response.data?.length || 0) < 500) break;
+      }
+      setStartHeads(loadedHeads); setStartVersions(loadedVersions);
+      const resultHeads: StartHead[] = [], resultVersions: ResultVersion[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const response = await supabase.from('result_lists')
+          .select('*,version:result_list_versions!result_lists_class_id_version_id_fkey(*)')
+          .order('class_id').range(offset, offset + 499);
+        if (version !== requestVersion.current) return;
+        if (response.error) {
+          setResultsError('No pudimos cargar los resultados estructurados. ' + response.error.message);
+          resultHeads.length = 0; resultVersions.length = 0; break;
+        }
+        for (const row of response.data || []) {
+          resultHeads.push({ class_id: row.class_id, version_id: row.version_id, revision: row.revision });
+          const linked = Array.isArray(row.version) ? row.version[0] : row.version;
+          if (linked) resultVersions.push(linked as unknown as ResultVersion);
+        }
+        if ((response.data?.length || 0) < 500) break;
+      }
+      setResultHeads(resultHeads); setResultVersions(resultVersions);
       const [arenaResponse, streamResponse] = await Promise.all([
         supabase.from('competition_arenas').select('*').order('is_primary', { ascending: false }).order('name'),
         supabase.from('competition_streams').select('*'),
@@ -359,6 +415,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (version !== requestVersion.current) return;
       setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
       setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
+      setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
     } finally {
       if (version === requestVersion.current) setIsLoading(false);
     }
@@ -915,7 +972,41 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
   const namedDocuments = documents.map(doc => ({ ...doc, name: documentLabel(doc, classes) }));
 
+  const importStartLists = async (batch: StartImport[]) => {
+    requireAdmin();
+    if (startListsError) throw new Error(startListsError);
+    if (!batch.length) throw new Error('Lote vacío.');
+    const reviewed = reviewStartImport(batch, classes, startHeads, batch[0].eventId);
+    const { error } = await supabase.rpc('equidate_import_start_lists', { batch: reviewed });
+    if (error) throw error;
+    await refreshData();
+  };
+  const unpublishStartList = async (classId: string, revision: string) => {
+    requireAdmin();
+    const { error } = await supabase.rpc('equidate_unpublish_start_list', { target: classId, expected_revision: revision });
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const importResults = async (batch: ResultImport[]) => {
+    requireAdmin();
+    if (resultsError) throw new Error(resultsError);
+    if (!batch.length) throw new Error('Lote vacío.');
+    const reviewed = reviewResultImport(batch, classes, resultHeads, batch[0].eventId);
+    const { error } = await supabase.rpc('equidate_import_result_lists', { batch: reviewed });
+    if (error) throw error;
+    await refreshData();
+  };
+  const unpublishResults = async (classId: string, revision: string) => {
+    requireAdmin();
+    const { error } = await supabase.rpc('equidate_unpublish_result_list', { target: classId, expected_revision: revision });
+    if (error) throw error;
+    await refreshData();
+  };
+
   return <EquestrianContext.Provider value={{
+    resultHeads, resultVersions, resultsError, importResults, unpublishResults,
+    startHeads, startVersions, startListsError, importStartLists, unpublishStartList,
     events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,

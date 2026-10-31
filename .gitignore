@@ -1,4 +1,6 @@
 node_modules/
+supabase/.temp/
+__pycache__/
 build/
 dist/
 coverage/

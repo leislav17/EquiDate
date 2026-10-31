@@ -10,6 +10,8 @@ La migración incremental de órdenes de ingreso agrega tablas y funciones; no e
 
 ## Modelo y permisos
 
+Los caballos y clubes ausentes en el PDF se muestran en blanco, sin nombres de reemplazo. La migración `20261031170402_optional_start_list_horse.sql` permite `horse: ""`; el jinete sigue siendo obligatorio. La detección de binomios repetidos se aplica cuando el caballo está identificado; dos filas sin caballo no se consideran automáticamente el mismo binomio. Los números de orden siempre deben ser únicos.
+
 `start_list_versions` conserva versiones completas inmutables con filas JSON, fuente y fecha. Cada fila contiene `position` (entero positivo único, admite saltos), `horse`, `rider` y `club` opcional. El orden visible depende del número, nunca del nombre ni del orden de extracción. Se rechaza el mismo binomio duplicado tras normalizar espacios y mayúsculas; un jinete con distintos caballos sí es válido. Si un binomio realmente participa dos veces, revisar el documento y adaptar explícitamente la regla antes de importar; no inventar nombres distintos.
 
 `start_lists` apunta a la versión publicada de cada prueba; `version_id = null` significa retirada. Una versión con `entries = []` sigue siendo una publicación válida con cero participantes. Las versiones históricas solo las lee un administrador; el público solo lee las versiones actualmente publicadas de concursos publicados. RLS usa exclusivamente `app_metadata.equidate_admin`; los usuarios normales y anónimos no escriben. Las funciones son SECURITY INVOKER, tienen search_path vacío y permisos EXECUTE explícitos.

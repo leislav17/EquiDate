@@ -16,11 +16,11 @@ export function validateStartEntries(value: unknown): StartEntry[] {
     if (!row || typeof row !== 'object') throw new Error(`Fila ${index + 1} inválida.`);
     const { position, rider, horse, club } = row;
     if (!Number.isSafeInteger(position) || position < 1 || position > 2147483647 || positions.has(position)) throw new Error(`Orden inválido o repetido en fila ${index + 1}.`);
-    if (typeof rider !== 'string' || !rider.trim() || rider.trim().length > 300 || typeof horse !== 'string' || !horse.trim() || horse.trim().length > 300) throw new Error(`Revisá jinete y caballo en fila ${index + 1}.`);
+    if (typeof rider !== 'string' || !rider.trim() || rider.trim().length > 300 || typeof horse !== 'string' || horse.trim().length > 300) throw new Error(`Revisá jinete y caballo en fila ${index + 1}.`);
     if (club != null && (typeof club !== 'string' || club.length > 300)) throw new Error(`Club inválido en fila ${index + 1}.`);
     const pair = JSON.stringify([normalized(rider), normalized(horse)]);
-    if (pairs.has(pair)) throw new Error(`Binomio duplicado en fila ${index + 1}.`);
-    positions.add(position); pairs.add(pair);
+    if (horse.trim() && pairs.has(pair)) throw new Error(`Binomio duplicado en fila ${index + 1}.`);
+    positions.add(position); if (horse.trim()) pairs.add(pair);
     return { position, rider: rider.trim(), horse: horse.trim(), club: club?.trim() || null };
   }).sort((a, b) => a.position - b.position);
 }

@@ -36,7 +36,9 @@ test('Import rejects ambiguous mappings, unreviewed data, duplicate orders and d
   assert.throws(() => validateStartEntries([rider, rider]), /Orden/);
   assert.throws(() => validateStartEntries([rider, { ...rider, position: 2, rider: ' ANA   PÉREZ ' }]), /duplicado/);
   assert.throws(() => validateStartEntries([{ ...rider, position: 0 }]), /Orden/);
-  assert.throws(() => validateStartEntries([{ ...rider, horse: '' }]), /caballo/);
+  assert.deepEqual(validateStartEntries([{ ...rider, horse: ' ', club: '' }]), [{ ...rider, horse: '', club: null }]);
+  assert.equal(validateStartEntries([{ ...rider, horse: '' }, { ...rider, position: 2, horse: '' }]).length, 2);
+  assert.throws(() => validateStartEntries([{ ...rider, horse: null }]), /caballo/);
   const c = { id: randomUUID(), eventId: randomUUID(), date: '2026-10-31', arenaId: randomUUID(), number: '1' } as CompetitionClass;
   const batch = [{ id: randomUUID(), classId: c.id, eventId: c.eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: null, sourceName: 'origen.pdf', reviewed: true, uncertainties: [], entries: [rider] }];
   assert.equal(reviewStartImport(batch, [c], [], c.eventId).length, 1);
@@ -63,6 +65,7 @@ test('Database: atomic versions, RLS, retries, stale replacements and historical
     INSERT INTO documents VALUES(gen_random_uuid(),'historical PDF unchanged');`);
   const docsBefore = (await db.query('SELECT * FROM documents')).rows;
   await db.exec(await readFile(new URL('../supabase/migrations/20261031164507_structured_start_lists.sql', import.meta.url), 'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261031170402_optional_start_list_horse.sql', import.meta.url), 'utf8'));
   const batch = (classId = c1, entries = [rider]) => ({ id: randomUUID(), classId, eventId: classId === privateClass ? draft : event, date: '2026-10-31', arenaId: arena, number: classId === c1 ? '1' : classId === c2 ? '2' : '3', expectedRevision: null as string | null, sourceName: 'lista.pdf', reviewed: true, uncertainties: [], entries });
   const asRole = async (role: string, claims: object, action: () => Promise<void>) => {
     await db.exec(`SET ROLE ${role}`);
@@ -80,7 +83,10 @@ test('Database: atomic versions, RLS, retries, stale replacements and historical
   });
   await t.test('Admin publishes and retries idempotently; zero rows is a published version', async () => {
     await asRole('authenticated', admin, async () => {
-      const response = await save([first, batch(c2, []), batch(privateClass)]); revision = response[0].revision;
+      const response = await save([first, batch(c2, []), batch(privateClass, [{ ...rider, horse: '' }])]); revision = response[0].revision;
+      const blank = (await db.query<{ entries: typeof rider[] }>('SELECT entries FROM start_list_versions WHERE class_id=$1', [privateClass])).rows[0];
+      assert.equal(blank.entries[0].horse, '');
+      assert.equal(blank.entries[0].club, null);
       assert.equal((await save([first]))[0].revision, revision);
       await assert.rejects(save([{ ...first, sourceName: null }]));
       assert.equal((await db.query('SELECT * FROM start_list_versions')).rows.length, 3);

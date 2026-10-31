@@ -23,7 +23,7 @@ export function StartListView({ classId }: { classId: string }) {
   const query = search.trim().toLocaleLowerCase();
   const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.club || ''} ${row.position}`.toLocaleLowerCase().includes(query)) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
-  return <main className="min-h-screen bg-white text-neutral-900 px-4 sm:px-8 py-5 sm:py-8">
+  return <section className="min-h-[calc(100vh-64px)] bg-white text-neutral-900 px-4 sm:px-8 py-5 sm:py-8" aria-label="Listado de la prueba">
     <div className="max-w-5xl mx-auto">
       <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver al concurso</button>
       {startListsError ? <div role="alert" className="py-8">{startListsError}<button className="underline ml-2 min-h-11" onClick={() => void refreshData()}>Reintentar</button></div> : !entry || !list ? <p className="py-8">Este listado no está publicado.</p> : <>
@@ -40,5 +40,5 @@ export function StartListView({ classId }: { classId: string }) {
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}
       </>}
     </div>
-  </main>;
+  </section>;
 }

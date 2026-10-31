@@ -28,9 +28,7 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
-  if (hash.startsWith('#start-list/') && !isLoading && !dataError) {
-    return <StartListView key={hash} classId={hash.slice(12)} />;
-  }
+  const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -49,7 +47,10 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {transmissionId ? (
+        {startListId ? (
+          isLoading ? <p role="status" className="p-8 text-center">Cargando listado…</p>
+            : dataError ? null : <StartListView key={startListId} classId={startListId} />
+        ) : transmissionId ? (
           <TransmissionPage dayId={transmissionId} />
         ) : activeView === 'admin' ? (
           isAuthLoading ? (

@@ -536,5 +536,36 @@ test('Incremental migration preserves records and enforces RLS and associations'
     });
   });
 
+  await context.test('Class participant_count migration supports integer count, preserves null, and enforces check constraint', async () => {
+    await db.exec(await readFile(new URL('../supabase/migrations/20261031_class_participant_count.sql', import.meta.url), 'utf8'));
+
+    // Existing rows must have participant_count NULL
+    const existing = (await db.query<{ participant_count: number | null }>('SELECT participant_count FROM competition_classes WHERE id=$1', [classId])).rows[0];
+    assert.equal(existing.participant_count, null);
+
+    // Update with 25 participants
+    await asRole('authenticated', true, async () => {
+      await db.query('UPDATE competition_classes SET participant_count = 25 WHERE id=$1', [classId]);
+      const updated = (await db.query<{ participant_count: number | null }>('SELECT participant_count FROM competition_classes WHERE id=$1', [classId])).rows[0];
+      assert.equal(updated.participant_count, 25);
+
+      // 0 participants is valid
+      await db.query('UPDATE competition_classes SET participant_count = 0 WHERE id=$1', [classId]);
+      const zero = (await db.query<{ participant_count: number | null }>('SELECT participant_count FROM competition_classes WHERE id=$1', [classId])).rows[0];
+      assert.equal(zero.participant_count, 0);
+
+      // Negative participant count must be rejected by check constraint
+      await assert.rejects(async () => {
+        await db.query('UPDATE competition_classes SET participant_count = -1 WHERE id=$1', [classId]);
+      });
+    });
+
+    // Anonymous readers can read participant_count
+    await asRole('anon', false, async () => {
+      const row = (await db.query<{ participant_count: number | null }>('SELECT participant_count FROM competition_classes WHERE id=$1', [classId])).rows[0];
+      assert.equal(row.participant_count, 0);
+    });
+  });
+
   await db.close();
 });

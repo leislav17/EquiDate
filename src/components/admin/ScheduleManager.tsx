@@ -21,7 +21,7 @@ function ManagerDialog({ title, onClose, children }: { title: string; onClose: (
   </div>;
 }
 
-function ArenaSettings({ eventId }: { eventId: string }) {
+export function ArenaSettings({ eventId }: { eventId: string }) {
   const { arenas, classes, streams, saveArena, deleteArena, reorderArenas } = useEquestrian();
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
@@ -354,9 +354,14 @@ export function TestsManager({ event, onClose }: { event: EquestrianEvent; onClo
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs text-neutral-500">
-                                {scheduleLabel ? `${scheduleLabel} · ` : ''}
+                              <p className="text-xs text-neutral-500 flex flex-wrap items-center gap-1.5">
+                                {scheduleLabel ? <span>{scheduleLabel} ·</span> : null}
                                 <span className="font-semibold text-neutral-700">Prueba {item.number}</span>
+                                {typeof item.participantCount === 'number' && item.participantCount !== null && (
+                                  <span className="text-[11px] font-medium text-neutral-600 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">
+                                    Cantidad de participantes: {item.participantCount}
+                                  </span>
+                                )}
                               </p>
                               <p className="font-bold text-sm text-[#123E59] break-words">{item.name}</p>
                               {item.description && (
@@ -464,7 +469,7 @@ interface DayOverride {
   isContinuous?: boolean;
 }
 
-function ClassForm({
+export function ClassForm({
   event,
   initialDate,
   entry,
@@ -501,6 +506,12 @@ function ClassForm({
   const [commonContinuous, setCommonContinuous] = useState(entry?.isContinuous ?? false);
   const [name, setName] = useState(entry?.name || '');
   const [description, setDescription] = useState(entry?.description || '');
+  const [participantCount, setParticipantCount] = useState<string>(() => {
+    if (entry && typeof entry.participantCount === 'number') {
+      return String(entry.participantCount);
+    }
+    return '';
+  });
 
   const existingInDay = classes.filter(c => c.eventId === event.id && c.date === (entry?.date || initialDate));
   const maxExistingOrder = existingInDay.length > 0 ? Math.max(...existingInDay.map(c => c.order || 0)) : 0;
@@ -562,6 +573,9 @@ function ClassForm({
 
   const handleSubmit = (form: React.FormEvent) => {
     form.preventDefault();
+    const parsedCount = participantCount.trim() === '' ? null : Math.max(0, parseInt(participantCount, 10));
+    const validCount = parsedCount === null || isNaN(parsedCount) ? null : parsedCount;
+
     if (isEditingExisting) {
       // Editing existing single class
       const singleDate = selectedDates[0] || entry?.date || initialDate;
@@ -579,6 +593,7 @@ function ClassForm({
         order,
         isApproximate: commonContinuous ? false : commonApproximate,
         isContinuous: commonContinuous,
+        participantCount: validCount,
       });
       return;
     }
@@ -602,6 +617,7 @@ function ClassForm({
         order,
         isApproximate: effApproximate,
         isContinuous: effContinuous,
+        participantCount: validCount,
       };
     });
 
@@ -852,21 +868,47 @@ function ClassForm({
           />
         </label>
 
-        {/* Sort order */}
-        <label className="block text-xs font-semibold text-neutral-700">
-          Orden de visualización
-          <input
-            type="number"
-            min="1"
-            required
-            className={field}
-            value={order}
-            onChange={form => setOrder(Number(form.target.value))}
-          />
-          <span className="block text-[11px] text-neutral-500 font-normal mt-1">
-            Posición relativa dentro de la jornada y pista. También podés reordenarlas arrastrando desde el listado.
-          </span>
-        </label>
+        {/* Cantidad de participantes & Orden de visualización */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block text-xs font-semibold text-neutral-700">
+            Cantidad de participantes (opcional)
+            <input
+              type="number"
+              min="0"
+              step="1"
+              className={field}
+              value={participantCount}
+              onChange={form => {
+                const val = form.target.value;
+                if (val === '') {
+                  setParticipantCount('');
+                } else {
+                  const num = parseInt(val, 10);
+                  setParticipantCount(isNaN(num) ? '' : String(Math.max(0, num)));
+                }
+              }}
+              placeholder="ej. 24 (opcional)"
+            />
+            <span className="block text-[11px] text-neutral-500 font-normal mt-1">
+              Número entero ≥ 0 de inscriptos en la prueba.
+            </span>
+          </label>
+
+          <label className="block text-xs font-semibold text-neutral-700">
+            Orden de visualización
+            <input
+              type="number"
+              min="1"
+              required
+              className={field}
+              value={order}
+              onChange={form => setOrder(Number(form.target.value))}
+            />
+            <span className="block text-[11px] text-neutral-500 font-normal mt-1">
+              Posición relativa dentro de la jornada y pista.
+            </span>
+          </label>
+        </div>
 
         {/* Editable summary table per day if multiple days selected */}
         {!isEditingExisting && selectedDates.length > 1 && (
@@ -982,7 +1024,7 @@ function ClassForm({
   );
 }
 
-function StreamEditor({ eventId, date, arenaId }: { eventId: string; date: string; arenaId: string }) {
+export function StreamEditor({ eventId, date, arenaId }: { eventId: string; date: string; arenaId: string }) {
   const { days, streams, saveStream } = useEquestrian();
   const day = days.find(item => item.eventId === eventId && item.date === date);
   const stream = streams.find(item => item.dayId === day?.id && item.arenaId === arenaId);

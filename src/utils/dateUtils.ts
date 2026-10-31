@@ -125,20 +125,48 @@ export function formatFullDateRange(startDateStr: string, endDateStr: string): s
 }
 
 /**
+ * Returns current date in Argentina (America/Argentina/Buenos_Aires, UTC-3) as YYYY-MM-DD
+ */
+export function getArgentinaTodayStr(): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date());
+  } catch {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+}
+
+/**
+ * Returns year, month (0-indexed), day and dateStr in Argentina local time.
+ */
+export function getArgentinaDate(): { year: number; month: number; day: number; dateStr: string } {
+  const dateStr = getArgentinaTodayStr();
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10) || new Date().getFullYear();
+  const month = (parseInt(parts[1], 10) || 1) - 1;
+  const day = parseInt(parts[2], 10) || 1;
+  return { year, month, day, dateStr };
+}
+
+/**
  * Calculates whether an event is ACTUAL, PROXIMO, or FINALIZADO
- * based on current date.
+ * based on current date in Argentina.
  */
 export function getEventTemporalStatus(
   startDateStr: string,
   endDateStr: string,
   customTodayStr?: string
 ): 'ACTUAL' | 'PROXIMO' | 'FINALIZADO' {
-  // Use current local date in YYYY-MM-DD
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = customTodayStr || `${year}-${month}-${day}`;
+  const todayStr = customTodayStr || getArgentinaTodayStr();
 
   if (todayStr >= startDateStr && todayStr <= endDateStr) {
     return 'ACTUAL';

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react
 import { ArrowLeft, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
+import { resultDisplayColumns, resultDisplayValue } from '../../utils/resultDisplay';
 
 export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }) {
   const fields = [['Definición', details.definition], ['Altura', details.height], ['Tiempo permitido', details.allowedTime], ['Tiempo óptimo', details.optimalTime]].filter(([,value]) => value);
@@ -12,7 +13,8 @@ export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }
   </div>;
 }
 
-export function ResultRows({ entries, columns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
+export function ResultRows({ entries, columns: sourceColumns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
+  const columns = resultDisplayColumns(sourceColumns);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollable, setScrollable] = useState(false);
   useEffect(() => {
@@ -24,28 +26,28 @@ export function ResultRows({ entries, columns }: { entries: ResultEntry[]; colum
     if (region.firstElementChild) observer.observe(region.firstElementChild);
     measure();
     return () => observer.disconnect();
-  }, [columns]);
+  }, [sourceColumns]);
   const groups = resultColumnGroups(columns);
   const grouped = groups.some(g => g.label);
-  const value = (row: ResultEntry, key: string) => Object.hasOwn(row.values || {}, key) ? row.values![key] : '';
+  const value = (row: ResultEntry, key: string) => resultDisplayValue(row, columns.find(c => c.key === key)!);
   const metric = (col: ResultColumn) => {
     const label = col.label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (label === 'faltas obstaculos') return { label: 'Obs.', width: 'var(--result-score-width)' };
     if (label === 'faltas tiempo') return { label: 'Tpo.', width: 'var(--result-score-width)' };
     if (label === 'total faltas') return { label: 'Tot.', width: 'var(--result-score-width)' };
-    if (label === 'faltas') return { label: 'F.', width: 'var(--result-score-width)' };
-    if (label === 'tiempo') return { label: 'Tiempo', width: 'var(--result-time-width)' };
+    if (label === 'faltas') return { label: 'Faltas', width: 'var(--result-score-width)' };
+    if (label === 'tiempo') return { label: 'Tpo.', width: 'var(--result-time-width)' };
     if (label === 'diferencia al optimo') return { label: 'Dif.', width: 'var(--result-time-width)' };
     if (label === 'total faltas de la prueba') return { label: 'Total', width: 'var(--result-total-width)' };
     return { label: col.label, width: 'var(--result-extra-width)' };
   };
-  const header = (col: ResultColumn, rowSpan = 1) => <th key={col.key} scope="col" rowSpan={rowSpan} className="result-metric-heading" aria-label={col.label}><abbr title={col.label} className="no-underline">{metric(col).label}</abbr></th>;
+  const header = (col: ResultColumn, rowSpan = 1) => <th key={col.key} scope="col" rowSpan={rowSpan} className="result-metric-heading" aria-label={col.label}><abbr title={col.label} className={`no-underline ${metric(col).label.length <= 7 ? 'whitespace-nowrap' : ''}`}>{metric(col).label}</abbr></th>;
   const style = { '--result-metrics-width': columns.length ? `calc(${columns.map(c => metric(c).width).join(' + ')})` : '0px' } as CSSProperties;
   return <div className="results-table-shell" style={style}>
     {scrollable && <p className="sm:hidden text-[11px] text-neutral-500 mb-2 text-right">Deslizá la tabla para ver todas las marcas →</p>}
     <div ref={scrollRef} className="overflow-x-auto rounded-xl border border-neutral-200" role="region" aria-label="Resultados de la prueba: tabla desplazable" tabIndex={scrollable ? 0 : undefined}>
       <table className="results-table text-left">
-        <caption className="sr-only">Puesto, caballo, jinete, club, categoría y resultados. Obs.: faltas por obstáculos. Tpo.: faltas por tiempo. Tot.: total de faltas. Dif.: diferencia al tiempo óptimo.</caption>
+        <caption className="sr-only">Puesto, caballo, jinete, club, categoría y resultados. Faltas: obstáculos más penalizaciones por tiempo, entre paréntesis. Tpo.: tiempo del recorrido. Total: faltas finales. Dif.: diferencia al tiempo óptimo.</caption>
         <colgroup><col style={{ width: 'var(--result-place-width)' }} /><col />{columns.map(col => <col key={col.key} style={{ width: metric(col).width }} />)}</colgroup>
         <thead className="bg-[#123E59] text-white"><tr>
           <th scope="col" rowSpan={grouped ? 2 : 1} className="result-place result-frozen-heading" aria-label="Puesto"><abbr title="Puesto" className="no-underline">P.</abbr></th>

@@ -23,11 +23,11 @@
 
 /* A single results row on every screen; only the score area scrolls past the identity. */
 .results-table-shell {
-  --result-place-width: 2rem;
-  --result-person-min: 8rem;
-  --result-score-width: 1.75rem;
+  --result-place-width: 1.75rem;
+  --result-person-min: 7rem;
+  --result-score-width: 2.25rem;
   --result-time-width: 2.5rem;
-  --result-total-width: 2rem;
+  --result-total-width: 1.75rem;
   --result-extra-width: 3.5rem;
 }
 .results-table {
@@ -53,7 +53,7 @@
 .results-table tbody tr:hover td { background-color: #f7fafc; }
 .results-table-shell [role="region"]:focus-visible { outline: 2px solid #123e5955; outline-offset: 2px; }
 @media (min-width: 640px) {
-  .results-table-shell { --result-person-min: 14rem; --result-score-width: 2.25rem; --result-time-width: 3.25rem; --result-total-width: 2.5rem; --result-extra-width: 4rem; }
+  .results-table-shell { --result-place-width: 2rem; --result-person-min: 14rem; --result-score-width: 2.75rem; --result-time-width: 3.25rem; --result-total-width: 2.5rem; --result-extra-width: 4rem; }
   .results-table { font-size: 12px; }
   .results-table .result-metric-heading, .results-table .result-group-heading { font-size: 11px; }
   .results-table .result-person { padding-right: 14px; }

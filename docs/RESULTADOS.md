@@ -18,7 +18,7 @@ Cada elemento del lote usa los identificadores y la revisión actual de su prueb
 - `columns`: array ordenado de `{key,label}` para las columnas adicionales que efectivamente incluya el documento. Máximo 12; las claves usan letras minúsculas, números y guiones bajos, comenzando con letra.
 - `values`: objeto de textos, indexados por esas claves. Preservar comas, decimales y estados tal como fueron publicados; no convertirlos automáticamente.
 
-El formato aprobado presenta Puesto, Caballo, Jinete y Club como en los órdenes de ingreso, seguido de Faltas y Tiempo. No muestra HNR, banderas, premios ni fondos decorativos. Los encabezados son azules con texto blanco. En móvil se apilan los datos del participante y las marcas debajo, para evitar una tabla demasiado ancha.
+El formato aprobado presenta Puesto y una identidad compacta con caballo, jinete, club y categoría, seguida de las marcas a la derecha en la misma fila. En escritorio, caballo y jinete quedan lado a lado dentro de esa columna; en celular se apilan entre sí, pero las marcas siguen a su derecha. Obs., Tpo. y Tot. abrevian faltas por obstáculos, faltas por tiempo y total, con títulos completos accesibles. Las columnas numéricas tienen anchos reducidos y los tiempos un poco más de espacio. Cuando no entra todo, la tabla se desliza horizontalmente conservando fijos puesto y participante. No muestra HNR, banderas, premios ni fondos decorativos. Los encabezados son azules con texto blanco.
 
 En Administración se puede elegir una o dos fases para descargar la plantilla. Cada prueba conserva el número de fases del documento original; no inferirlo a partir de las marcas ni convertir una fase en dos.
 

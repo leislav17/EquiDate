@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
@@ -6,45 +6,60 @@ import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type
 export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }) {
   const fields = [['Definición', details.definition], ['Altura', details.height], ['Tiempo permitido', details.allowedTime], ['Tiempo óptimo', details.optimalTime]].filter(([,value]) => value);
   if (!fields.length && !details.rounds?.length) return null;
-  return <div className="mt-4 space-y-3 text-sm text-neutral-700" aria-label="Condiciones de la prueba">
-    <dl className="flex flex-wrap gap-x-6 gap-y-2">{fields.map(([label,value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="font-semibold break-words">{value}</dd></div>)}</dl>
+  return <div className="mt-4 flex flex-wrap items-start gap-x-6 gap-y-3 text-sm text-neutral-700" aria-label="Condiciones de la prueba">
+    <dl className="contents">{fields.map(([label,value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="font-semibold break-words">{value}</dd></div>)}</dl>
     {details.rounds?.map((round,i) => <div key={i}><p className="font-semibold text-[#123E59]">{round.label}</p><dl className="flex flex-wrap gap-x-6 gap-y-1">{round.allowedTime && <div><dt className="text-xs text-neutral-500">Tiempo permitido</dt><dd>{round.allowedTime}</dd></div>}{round.optimalTime && <div><dt className="text-xs text-neutral-500">Tiempo óptimo</dt><dd>{round.optimalTime}</dd></div>}</dl></div>)}
   </div>;
 }
 
 export function ResultRows({ entries, columns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+  useEffect(() => {
+    const region = scrollRef.current;
+    if (!region) return;
+    const measure = () => setScrollable(region.scrollWidth > region.clientWidth + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(region);
+    if (region.firstElementChild) observer.observe(region.firstElementChild);
+    measure();
+    return () => observer.disconnect();
+  }, [columns]);
   const groups = resultColumnGroups(columns);
   const grouped = groups.some(g => g.label);
-  const multipleRounds = groups.filter(g => g.label).length > 1;
-  const hasCategory = entries.some(row => row.category);
   const value = (row: ResultEntry, key: string) => Object.hasOwn(row.values || {}, key) ? row.values![key] : '';
-  return <>
-    <div className="sm:hidden">
-      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Puesto</span><span>Caballo / Jinete / Club{columns.length > 0 && <span className="block mt-1 font-normal normal-case">{grouped ? groups.filter(g => g.label).map(g => g.label).join(' · ') : 'Faltas y tiempos de la prueba'}</span>}</span></div>
-      <ol aria-label="Resultados" className="divide-y divide-neutral-200">{entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 py-5">
-        <span className={`${row.qualified === true ? 'text-[#A61E4D] font-bold' : 'text-neutral-500'} tabular-nums break-words [overflow-wrap:anywhere]`} aria-label={row.qualified === true ? `Puesto ${row.rank || ''}, clasificado` : undefined}>{row.rank || ''}</span>
-        <div className="min-w-0 space-y-1"><p className="font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.horse}</p><p className="text-neutral-700 break-words [overflow-wrap:anywhere]">{row.rider}</p>{row.club && <p className="text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.club}</p>}{row.category && <p className="text-xs text-neutral-500">Categoría: {row.category}</p>}
-          {!!columns.length && <div className={`grid gap-3 pt-3 ${multipleRounds ? 'grid-cols-2' : 'grid-cols-1'}`}>{groups.map((group, index) => <div key={index} className={`min-w-0 ${!group.label ? 'col-span-full' : ''}`}>{group.label && <p className="text-xs font-bold text-[#123E59] mb-2">{group.label}</p>}<dl className="grid grid-cols-2 gap-2">{group.columns.map(col => <div key={col.key} className="min-w-0"><dt className="text-xs text-neutral-500">{col.label}</dt><dd className="text-sm tabular-nums break-words [overflow-wrap:anywhere]">{value(row, col.key)}</dd></div>)}</dl></div>)}</div>}
-        </div>
-      </li>)}</ol>
-    </div>
-    <div className="hidden sm:block overflow-x-auto rounded-lg">
-      <table className="w-full min-w-[600px] text-sm text-left">
+  const metric = (col: ResultColumn) => {
+    const label = col.label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (label === 'faltas obstaculos') return { label: 'Obs.', width: 'var(--result-score-width)' };
+    if (label === 'faltas tiempo') return { label: 'Tpo.', width: 'var(--result-score-width)' };
+    if (label === 'total faltas') return { label: 'Tot.', width: 'var(--result-score-width)' };
+    if (label === 'faltas') return { label: 'F.', width: 'var(--result-score-width)' };
+    if (label === 'tiempo') return { label: 'Tiempo', width: 'var(--result-time-width)' };
+    if (label === 'diferencia al optimo') return { label: 'Dif.', width: 'var(--result-time-width)' };
+    if (label === 'total faltas de la prueba') return { label: 'Total', width: 'var(--result-total-width)' };
+    return { label: col.label, width: 'var(--result-extra-width)' };
+  };
+  const header = (col: ResultColumn, rowSpan = 1) => <th key={col.key} scope="col" rowSpan={rowSpan} className="result-metric-heading" aria-label={col.label}><abbr title={col.label} className="no-underline">{metric(col).label}</abbr></th>;
+  const style = { '--result-metrics-width': columns.length ? `calc(${columns.map(c => metric(c).width).join(' + ')})` : '0px' } as CSSProperties;
+  return <div className="results-table-shell" style={style}>
+    {scrollable && <p className="sm:hidden text-[11px] text-neutral-500 mb-2 text-right">Deslizá la tabla para ver todas las marcas →</p>}
+    <div ref={scrollRef} className="overflow-x-auto rounded-xl border border-neutral-200" role="region" aria-label="Resultados de la prueba: tabla desplazable" tabIndex={scrollable ? 0 : undefined}>
+      <table className="results-table text-left">
+        <caption className="sr-only">Puesto, caballo, jinete, club, categoría y resultados. Obs.: faltas por obstáculos. Tpo.: faltas por tiempo. Tot.: total de faltas. Dif.: diferencia al tiempo óptimo.</caption>
+        <colgroup><col style={{ width: 'var(--result-place-width)' }} /><col />{columns.map(col => <col key={col.key} style={{ width: metric(col).width }} />)}</colgroup>
         <thead className="bg-[#123E59] text-white"><tr>
-          {['Puesto', 'Caballo', 'Jinete', 'Club', ...(hasCategory ? ['Categoría'] : [])].map(label => <th key={label} scope="col" rowSpan={grouped ? 2 : 1} className="px-3 py-3 font-semibold whitespace-nowrap">{label}</th>)}
-          {groups.map((group,i) => group.label ? <th key={i} scope="colgroup" colSpan={group.columns.length} className="px-3 pt-3 pb-2 text-center font-semibold border-l border-white/20">{group.label}</th> : <Fragment key={i}>{group.columns.map(col => <th key={col.key} scope="col" rowSpan={grouped ? 2 : 1} className="px-3 py-3 text-right font-semibold whitespace-nowrap">{col.label}</th>)}</Fragment>)}
-        </tr>{grouped && <tr>{groups.filter(g => g.label).flatMap(g => g.columns).map(col => <th key={col.key} scope="col" className="px-3 pb-3 text-right font-semibold whitespace-nowrap">{col.label}</th>)}</tr>}</thead>
-        <tbody className="divide-y divide-neutral-200">{entries.map(row => <tr key={row.position}>
-          <td className={`px-3 py-5 tabular-nums align-top ${row.qualified === true ? 'text-[#A61E4D] font-bold' : 'text-neutral-500'}`} aria-label={row.qualified === true ? `Puesto ${row.rank || ''}, clasificado` : undefined}>{row.rank || ''}</td>
-          <td className="px-3 py-5 font-bold text-[#123E59] align-top break-words">{row.horse}</td>
-          <td className="px-3 py-5 align-top break-words">{row.rider}</td>
-          <td className="px-3 py-5 text-neutral-500 align-top break-words">{row.club || ''}</td>
-          {hasCategory && <td className="px-3 py-5 text-neutral-500 align-top break-words">{row.category || ''}</td>}
-          {columns.map(col => <td key={col.key} className="px-3 py-5 tabular-nums align-top text-right whitespace-nowrap">{value(row, col.key)}</td>)}
+          <th scope="col" rowSpan={grouped ? 2 : 1} className="result-place result-frozen-heading" aria-label="Puesto"><abbr title="Puesto" className="no-underline">P.</abbr></th>
+          <th scope="col" rowSpan={grouped ? 2 : 1} className="result-person result-frozen-heading"><span className="sm:grid sm:grid-cols-2 sm:gap-x-3"><span>Caballo<span className="sm:hidden"> / Jinete</span></span><span className="hidden sm:inline">Jinete</span></span><span className="block text-[9px] sm:text-[10px] font-normal text-white/75 mt-0.5">Club · Categoría</span></th>
+          {groups.map((group,i) => group.label ? <th key={i} scope="colgroup" colSpan={group.columns.length} className="result-group-heading">{group.label}</th> : <Fragment key={i}>{group.columns.map(col => header(col, grouped ? 2 : 1))}</Fragment>)}
+        </tr>{grouped && <tr>{groups.filter(g => g.label).flatMap(g => g.columns).map(col => header(col))}</tr>}</thead>
+        <tbody>{entries.map(row => <tr key={row.position} className="group">
+          <td className={`result-place result-frozen-cell tabular-nums ${row.qualified === true ? 'text-[#A61E4D] font-bold' : 'text-neutral-500'}`} aria-label={row.qualified === true ? `Puesto ${row.rank || ''}, clasificado` : undefined}>{row.rank || ''}</td>
+          <td className="result-person result-frozen-cell"><div className="grid gap-y-0.5 sm:grid-cols-2 sm:gap-x-3"><p className="font-bold text-[#123E59] [overflow-wrap:anywhere]">{row.horse}</p><p className="text-neutral-700 [overflow-wrap:anywhere]">{row.rider}</p>{(row.club || row.category) && <p className="sm:col-span-2 mt-0.5 text-[10px] sm:text-[11px] text-neutral-500 [overflow-wrap:anywhere]">{row.club}{row.club && row.category ? ' · ' : ''}{row.category}</p>}</div></td>
+          {columns.map(col => <td key={col.key} className="result-metric-cell tabular-nums" title={col.label}>{value(row, col.key)}</td>)}
         </tr>)}</tbody>
       </table>
     </div>
-  </>;
+  </div>;
 }
 export function ResultsView({ classId }: { classId: string }) {
   const { classes, arenas, events, resultHeads, resultVersions, documents, resultsError, refreshData, setSelectedEventId } = useEquestrian();

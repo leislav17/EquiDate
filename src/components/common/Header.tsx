@@ -15,6 +15,7 @@ export const Header: React.FC = () => {
         <svg viewBox="630 761 4075 3618" className="w-14 h-12" aria-hidden="true">
           <image href="/equidate-symbol.png" width="5225" height="5225" />
         </svg>
+        <span className="w-[2px] h-8 shrink-0 rounded-full bg-[#A61E4D]" aria-hidden="true" />
         <svg viewBox="153 1806 4787 1596" className="w-36 sm:w-44 h-12" aria-hidden="true">
           <image href="/equidate-wordmark.png" width="5225" height="5225" />
         </svg>

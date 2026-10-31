@@ -18,6 +18,13 @@ Cada elemento del lote usa los identificadores y la revisión actual de su prueb
 - `columns`: array ordenado de `{key,label}` para las columnas adicionales que efectivamente incluya el documento. Máximo 12; las claves usan letras minúsculas, números y guiones bajos, comenzando con letra.
 - `values`: objeto de textos, indexados por esas claves. Preservar comas, decimales y estados tal como fueron publicados; no convertirlos automáticamente.
 
-La tabla presenta primero Puesto, Caballo, Jinete y Club, seguidos de las columnas del documento. Los encabezados son azules con texto blanco; en pantallas pequeñas se permite desplazamiento horizontal dentro de la tabla. El formato específico se ajustará al ejemplo que proporcione la propietaria.
+El formato aprobado presenta Puesto, Caballo, Jinete y Club como en los órdenes de ingreso, seguido de Faltas y Tiempo. No muestra HNR, banderas, premios ni fondos decorativos. Los encabezados son azules con texto blanco. En móvil se apilan los datos del participante y las marcas debajo, para evitar una tabla demasiado ancha.
+
+En Administración se puede elegir una o dos fases para descargar la plantilla. Cada prueba conserva el número de fases del documento original; no inferirlo a partir de las marcas ni convertir una fase en dos.
+
+- Una fase: `faults` (Faltas), `time` (Tiempo).
+- Dos fases: `phase1_faults`, `phase1_time`, `phase2_faults`, `phase2_time`. Cada par usa las etiquetas Faltas y Tiempo y aparece agrupado bajo Fase 1 o Fase 2.
+
+Los valores de cada fase se conservan de forma independiente, incluidos ceros y campos vacíos. No se suman faltas, no se completan tiempos y no se recalculan puestos. Las columnas de documentos existentes con otras claves se siguen mostrando con sus etiquetas originales.
 
 `equidate_import_result_lists(batch)` publica de forma atómica e idempotente; `equidate_unpublish_result_list(target,expected_revision)` retira sin borrar versiones. Los resultados nunca sobrescriben el contador manual ni el contador derivado del orden de ingreso.

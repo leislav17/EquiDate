@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
-import { ResultImport, ResultVersion, publishedResults, reviewResultImport, resultPdf } from '../../utils/results';
+import { ResultImport, ResultVersion, publishedResults, reviewResultImport, resultPdf, resultColumnsForPhases } from '../../utils/results';
 import { ResultRows } from '../public/ResultsView';
 
 export function ResultsManager({ eventId }: { eventId: string }) {
   const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, resultHeads, resultVersions, resultsError, importResults, unpublishResults } = useEquestrian();
   const [text, setText] = useState('');
+  const [phases, setPhases] = useState<1 | 2>(1);
   const [preview, setPreview] = useState<ResultImport[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ export function ResultsManager({ eventId }: { eventId: string }) {
   function exportTemplate() {
     const template = targets.map(c => ({ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number,
       expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null,
-      columns: [], sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original'], entries: [] }));
+      columns: resultColumnsForPhases(phases), sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original'], entries: [] }));
     const url = URL.createObjectURL(new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `pruebas-${eventId}.json`; link.click(); URL.revokeObjectURL(url);
   }
@@ -76,6 +77,8 @@ export function ResultsManager({ eventId }: { eventId: string }) {
       {!history.length && <p className="text-sm">Todavía no hay versiones.</p>}
       {history.map(v => <div key={v.id} className="flex flex-wrap gap-2 justify-between text-sm"><span>{new Date(v.created_at).toLocaleString('es-AR')} · {v.entries.length} participantes · {v.source_name}</span><button disabled={busy} className="underline min-h-11 text-[#123E59]" onClick={() => { const c = targets.find(c => c.id === v.class_id)!; changeText(JSON.stringify([{ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null, sourceName: v.source_name, columns: v.columns, reviewed: true, uncertainties: [], entries: v.entries }], null, 2)); }}>Preparar restauración</button></div>)}
     </div>}
+    <label className="block text-sm font-semibold">Formato de la plantilla<select className="block min-h-11 mt-2 rounded-lg border border-neutral-300 px-3 bg-white max-w-full" value={phases} disabled={busy} onChange={e => setPhases(Number(e.target.value) as 1 | 2)}><option value={1}>Una fase · Faltas y Tiempo</option><option value={2}>Dos fases · Faltas y Tiempo por fase</option></select></label>
+    <p className="text-sm text-neutral-500">La plantilla propone ese formato. Cada prueba debe conservar las fases y valores que figuren en su resultado original; los datos faltantes quedan en blanco.</p>
     <button className="min-h-11 underline text-[#123E59] font-semibold" onClick={exportTemplate} disabled={!targets.length || busy}>Descargar plantilla de pruebas para ChatGPT</button>
     <label className="block text-sm font-semibold">Lote revisado (JSON)<textarea className="block w-full min-h-48 mt-2 rounded-lg border border-neutral-300 p-3 text-xs font-mono" value={text} disabled={busy} onChange={e => changeText(e.target.value)} placeholder="Pegá el lote extraído y revisado con ChatGPT" /></label>
     <label className="block text-sm">O seleccioná el archivo JSON<input type="file" accept=".json,application/json" disabled={busy} className="block max-w-full my-2" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 10 * 1024 * 1024) { setMessage('El lote supera 10 MB.'); return; } changeText(await file.text()); e.target.value = ''; }} /></label>

@@ -3,11 +3,22 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { validateResultColumns, validateResultEntries, reviewResultImport, resultPdf } from '../src/utils/results.ts';
+import { validateResultColumns, validateResultEntries, reviewResultImport, resultPdf, resultColumnsForPhases, resultColumnGroups } from '../src/utils/results.ts';
 import type { CompetitionClass, DocumentItem } from '../src/types/equestrian.ts';
 
 const columns = [{ key: 'faults', label: 'Faltas' }, { key: 'time', label: 'Tiempo' }];
 const row = { position: 1, rider: 'Ana', horse: '', club: null, rank: '1', values: { faults: '0', time: '61,25' } };
+test('One and two phase formats keep faults and times distinct, including zeros and missing marks', () => {
+  assert.deepEqual(resultColumnsForPhases(1), columns);
+  const two = resultColumnsForPhases(2);
+  assert.deepEqual(resultColumnGroups(two).map(g => g.label), ['Fase 1', 'Fase 2']);
+  assert.deepEqual(two.map(c => c.key), ['phase1_faults', 'phase1_time', 'phase2_faults', 'phase2_time']);
+  const values = { phase1_faults: '0', phase1_time: '70,15', phase2_faults: '4', phase2_time: '' };
+  assert.deepEqual(validateResultEntries([{ ...row, values }], two)[0].values, values);
+  assert.throws(() => validateResultEntries([row], two));
+  const custom = [{ key: 'official_time', label: 'Tiempo oficial' }];
+  assert.equal(resultColumnGroups(custom)[0].columns[0].key, 'official_time');
+});
 test('Results preserve source values, tied ranks, empty fields and class associations', () => {
   assert.deepEqual(validateResultEntries([row, { ...row, position: 2, rider: 'Bea' }], columns).map(r => r.rank), ['1', '1']);
   assert.equal(validateResultEntries([row], columns)[0].horse, '');
@@ -86,6 +97,16 @@ test('Result publication is atomic, admin-only, independent of start lists, and 
     assert.equal((await db.query('SELECT * FROM documents')).rows.length,1);
     assert.equal((await db.query('SELECT * FROM start_lists')).rows.length,0);
     assert.equal((await db.query<{ participant_count: number }>('SELECT participant_count FROM competition_classes WHERE id=$1',[c1])).rows[0].participant_count,39);
+  });
+  await t.test('Two-phase columns and every source mark survive a full database round trip', async () => {
+    await asRole('authenticated',admin,async () => {
+      const head = (await db.query<{ revision: string }>('SELECT revision FROM result_lists WHERE class_id=$1',[c2])).rows[0];
+      const twoPhase = { ...make(c2), expectedRevision: head.revision, columns: resultColumnsForPhases(2), entries: [{ ...row, values: { phase1_faults: '0', phase1_time: '65,34', phase2_faults: '4', phase2_time: '' } }] };
+      await save([twoPhase]);
+      const stored = (await db.query<{ columns: typeof twoPhase.columns; entries: typeof twoPhase.entries }>('SELECT v.columns,v.entries FROM result_list_versions v JOIN result_lists h ON h.version_id=v.id WHERE h.class_id=$1',[c2])).rows[0];
+      assert.deepEqual(stored.columns,twoPhase.columns);
+      assert.deepEqual(stored.entries,twoPhase.entries);
+    });
   });
   await db.close();
 });

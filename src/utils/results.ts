@@ -5,6 +5,17 @@ export interface ResultColumn { key: string; label: string }
 export interface ResultEntry extends StartEntry { rank?: string; values?: Record<string, string> }
 export interface ResultVersion extends StartVersion { columns: ResultColumn[]; entries: ResultEntry[] }
 export interface ResultImport extends StartImport { columns: ResultColumn[]; entries: ResultEntry[] }
+export function resultColumnsForPhases(phases: 1 | 2): ResultColumn[] {
+  return phases === 1 ? [{ key: 'faults', label: 'Faltas' }, { key: 'time', label: 'Tiempo' }]
+    : [1, 2].flatMap(phase => [{ key: `phase${phase}_faults`, label: 'Faltas' }, { key: `phase${phase}_time`, label: 'Tiempo' }]);
+}
+export function resultColumnGroups(columns: ResultColumn[]): { label: string; columns: ResultColumn[] }[] {
+  const keys = resultColumnsForPhases(2).map(c => c.key);
+  if (columns.length === 4 && columns.every((c, i) => c.key === keys[i])) {
+    return [{ label: 'Fase 1', columns: columns.slice(0, 2) }, { label: 'Fase 2', columns: columns.slice(2) }];
+  }
+  return [{ label: '', columns }];
+}
 export function validateResultColumns(value: unknown): ResultColumn[] {
   if (!Array.isArray(value) || value.length > 12) throw new Error('Se permiten hasta 12 columnas de resultados.');
   const keys = new Set<string>();

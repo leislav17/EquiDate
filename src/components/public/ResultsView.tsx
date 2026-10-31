@@ -1,23 +1,38 @@
 import { useState } from 'react';
 import { ArrowLeft, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { publishedResults, resultPdf, type ResultEntry, type ResultColumn } from '../../utils/results';
+import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn } from '../../utils/results';
 
 export function ResultRows({ entries, columns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
-  return <div className="overflow-x-auto rounded-lg border border-neutral-200">
-    <table className="w-full min-w-[600px] text-sm text-left">
-      <thead className="bg-[#123E59] text-white"><tr>
-        {['Puesto', 'Caballo', 'Jinete', 'Club', ...columns.map(c => c.label)].map((label, index) => <th key={index} scope="col" className="px-3 py-3 font-semibold whitespace-nowrap">{label}</th>)}
-      </tr></thead>
-      <tbody className="divide-y divide-neutral-200">{entries.map(row => <tr key={row.position}>
-        <td className="px-3 py-4 tabular-nums align-top">{row.rank || ''}</td>
-        <td className="px-3 py-4 font-bold text-[#123E59] align-top break-words">{row.horse}</td>
-        <td className="px-3 py-4 align-top break-words">{row.rider}</td>
-        <td className="px-3 py-4 text-neutral-500 align-top break-words">{row.club || ''}</td>
-        {columns.map(col => <td key={col.key} className="px-3 py-4 tabular-nums align-top whitespace-nowrap">{Object.hasOwn(row.values || {}, col.key) ? row.values![col.key] : ''}</td>)}
-      </tr>)}</tbody>
-    </table>
-  </div>;
+  const groups = resultColumnGroups(columns);
+  const twoPhases = groups.length === 2;
+  const value = (row: ResultEntry, key: string) => Object.hasOwn(row.values || {}, key) ? row.values![key] : '';
+  return <>
+    <div className="sm:hidden">
+      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Puesto</span><span>Caballo / Jinete / Club{columns.length > 0 && <span className="block mt-1 font-normal normal-case">{twoPhases ? 'Fase 1 y Fase 2 · Faltas / Tiempo' : columns.map(c => c.label).join(' / ')}</span>}</span></div>
+      <ol aria-label="Resultados" className="divide-y divide-neutral-200">{entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 py-5">
+        <span className="text-neutral-500 tabular-nums break-words [overflow-wrap:anywhere]">{row.rank || ''}</span>
+        <div className="min-w-0 space-y-1"><p className="font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.horse}</p><p className="text-neutral-700 break-words [overflow-wrap:anywhere]">{row.rider}</p>{row.club && <p className="text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.club}</p>}
+          {!!columns.length && <div className={`grid gap-3 pt-3 ${twoPhases ? 'grid-cols-2' : 'grid-cols-1'}`}>{groups.map((group, index) => <div key={index} className="min-w-0">{group.label && <p className="text-xs font-bold text-[#123E59] mb-2">{group.label}</p>}<dl className="grid grid-cols-2 gap-2">{group.columns.map(col => <div key={col.key} className="min-w-0"><dt className="text-xs text-neutral-500">{col.label}</dt><dd className="text-sm tabular-nums break-words [overflow-wrap:anywhere]">{value(row, col.key)}</dd></div>)}</dl></div>)}</div>}
+        </div>
+      </li>)}</ol>
+    </div>
+    <div className="hidden sm:block overflow-x-auto rounded-lg">
+      <table className="w-full min-w-[600px] text-sm text-left">
+        <thead className="bg-[#123E59] text-white"><tr>
+          {['Puesto', 'Caballo', 'Jinete', 'Club'].map(label => <th key={label} scope="col" rowSpan={twoPhases ? 2 : 1} className="px-3 py-3 font-semibold whitespace-nowrap">{label}</th>)}
+          {twoPhases ? groups.map(group => <th key={group.label} scope="colgroup" colSpan={group.columns.length} className="px-3 pt-3 pb-2 text-center font-semibold border-l border-white/20">{group.label}</th>) : columns.map(col => <th key={col.key} scope="col" className="px-3 py-3 text-right font-semibold whitespace-nowrap">{col.label}</th>)}
+        </tr>{twoPhases && <tr>{columns.map(col => <th key={col.key} scope="col" className="px-3 pb-3 text-right font-semibold whitespace-nowrap">{col.label}</th>)}</tr>}</thead>
+        <tbody className="divide-y divide-neutral-200">{entries.map(row => <tr key={row.position}>
+          <td className="px-3 py-5 tabular-nums align-top text-neutral-500">{row.rank || ''}</td>
+          <td className="px-3 py-5 font-bold text-[#123E59] align-top break-words">{row.horse}</td>
+          <td className="px-3 py-5 align-top break-words">{row.rider}</td>
+          <td className="px-3 py-5 text-neutral-500 align-top break-words">{row.club || ''}</td>
+          {columns.map(col => <td key={col.key} className="px-3 py-5 tabular-nums align-top text-right whitespace-nowrap">{value(row, col.key)}</td>)}
+        </tr>)}</tbody>
+      </table>
+    </div>
+  </>;
 }
 export function ResultsView({ classId }: { classId: string }) {
   const { classes, arenas, events, resultHeads, resultVersions, documents, resultsError, refreshData, setSelectedEventId } = useEquestrian();

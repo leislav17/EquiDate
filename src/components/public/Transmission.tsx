@@ -36,8 +36,11 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const videoRef = useRef<HTMLDivElement>(null);
   const listsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    // A late card can be far down the page: bring the video and start of the list into view.
-    if (selectedList) (videoRef.current || listsRef.current)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    // Keep the selected list below the pinned player without restarting playback.
+    if (selectedList && listsRef.current) {
+      const pinnedHeight = (videoRef.current?.getBoundingClientRect().height || 0) + 65;
+      window.scrollTo({ top: window.scrollY + listsRef.current.getBoundingClientRect().top - pinnedHeight - 16, behavior: 'smooth' });
+    }
   }, [selectedList]);
   const selectedDocument = selectedList?.kind === 'document' ? documents.find(doc => doc.id === selectedList.id && doc.eventId === day.eventId && doc.eventDate === day.date) : undefined;
   const event = getEventById(day.eventId);
@@ -45,7 +48,16 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const videoId = getYouTubeId(youtubeUrl);
   const arena = arenas.find(item => item.id === arenaId);
   const multiple = arenas.filter(item => item.eventId === day.eventId).length > 1;
-  return <div className="max-w-4xl mx-auto px-4 py-6">
+  return <div className="max-w-4xl mx-auto">
+    {videoId ? <div ref={videoRef} className="sticky top-[65px] z-30 bg-black">
+      <div className="aspect-video max-h-[50svh] w-full overflow-hidden">
+        <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
+          title={'Transmisión de ' + event?.name + ' · ' + day.date + (arena ? ' · ' + arena.name : '')}
+          className="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
+      </div>
+    </div> : <p className="px-4 pt-6">Transmisión aún no disponible.</p>}
+    <div className="px-4 py-6">
     <button onClick={() => { setSelectedEventId(day.eventId); setActiveView('public'); window.location.hash = ''; }}
       className="flex items-center gap-2 min-h-11 text-sm font-bold text-[#123E59] mb-4">
       <ArrowLeft className="w-4 h-4" />Volver al concurso
@@ -54,14 +66,6 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
     <h1 className="font-display text-2xl font-black text-[#123E59] mt-1 mb-4">{event?.name}</h1>
     <p className="text-xs font-bold mb-3">{label === 'VER EN VIVO' ? 'EN VIVO · Transmisión de la jornada' : 'Transmisión de la jornada'}</p>
     {multiple && <h2 className="font-bold text-[#123E59] mb-4">{arena?.name}</h2>}
-    {videoId ? <>
-      <div ref={videoRef} className="aspect-video w-full overflow-hidden rounded-xl bg-black scroll-mt-20">
-        <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
-          title={'Transmisión de ' + event?.name + ' · ' + day.date + (arena ? ' · ' + arena.name : '')}
-          className="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
-      </div>
-    </> : <p>Transmisión aún no disponible.</p>}
     <div ref={listsRef} className="mt-8 scroll-mt-20">
       {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
@@ -73,6 +77,7 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
             onOpenStartList={id => setSelectedList({ kind: 'structured', id })}
             onOpenListDocument={doc => setSelectedList({ kind: 'document', id: doc.id })} />
         </>}
+    </div>
     </div>
   </div>;
 }

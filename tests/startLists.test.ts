@@ -10,6 +10,12 @@ import type { StartVersion } from '../src/utils/startLists.ts';
 import type { CompetitionClass, DocumentItem } from '../src/types/equestrian.ts';
 
 const rider = { position: 1, rider: 'Ana Pérez', horse: 'Relámpago', club: null };
+test('Start list imports preserve optional category without changing old rows', () => {
+  assert.deepEqual(validateStartEntries([rider]), [rider]);
+  assert.equal(validateStartEntries([{ ...rider, category: ' INICIADOS MAYOR ' }])[0].category, 'INICIADOS MAYOR');
+  assert.throws(() => validateStartEntries([{ ...rider, category: 42 }]));
+  assert.throws(() => validateStartEntries([{ ...rider, category: 'a'.repeat(101) }]));
+});
 test('Netlify main refuses a production database and accepts only the designated TEST project', () => {
   const guard = fileURLToPath(new URL('../scripts/check-build-environment.mjs', import.meta.url));
   const execute = (url: string) => spawnSync(process.execPath, [guard], { env: { ...process.env, BRANCH: 'main', VITE_SUPABASE_URL: url }, encoding: 'utf8' });

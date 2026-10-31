@@ -45,3 +45,5 @@ El contador público usa `entries.length` del listado publicado (también cero).
 ## Verificación
 
 `npm ci`, `npm test`, `npm run lint`, `npm run build`. Los tests nuevos ejercitan RLS real en PostgreSQL embebido, publicación vacía, asociación, duplicados, reintentos, reemplazos obsoletos, rollback de lotes, conservación histórica y el comportamiento del botón/contador. Validar además la vista pública en 320/375/768 px y escritorio, búsqueda, descarga y navegación atrás.
+
+Cada fila admite category opcional (texto de hasta 100 caracteres). Conservar la categoría informada por el PDF, sin inferirla del programa. En móvil y paneles estrechos se presenta jinete, caballo y categoría · club; el punto solo aparece si existen ambos datos. Las versiones previas sin categoría siguen siendo válidas. El campo se conserva dentro del JSON de entradas existente, sin migrar ni modificar listados publicados.

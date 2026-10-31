@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Play } from 'lucide-react';
 import { CompetitionDay } from '../../types/equestrian';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { formatDayHeader } from '../../utils/dateUtils';
 import { getYouTubeId, transmissionLabel } from '../../utils/schedule';
 import { DayProgram } from './DayProgram';
+import { StartListView } from './StartListView';
+import { DocumentViewer } from '../viewer/DocumentViewer';
 
 export function useTransmissionLabel(day: CompetitionDay) {
   const [now, setNow] = useState(() => new Date());
@@ -29,7 +31,15 @@ export function TransmissionButton({ day }: { day: CompetitionDay }) {
 }
 
 function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: string; youtubeUrl: string }) {
-  const { arenas, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
+  const { arenas, documents, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
+  const [selectedList, setSelectedList] = useState<{ kind: 'structured' | 'document'; id: string } | null>(null);
+  const videoRef = useRef<HTMLDivElement>(null);
+  const listsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // A late card can be far down the page: bring the video and start of the list into view.
+    if (selectedList) (videoRef.current || listsRef.current)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [selectedList]);
+  const selectedDocument = selectedList?.kind === 'document' ? documents.find(doc => doc.id === selectedList.id && doc.eventId === day.eventId && doc.eventDate === day.date) : undefined;
   const event = getEventById(day.eventId);
   const label = useTransmissionLabel(day);
   const videoId = getYouTubeId(youtubeUrl);
@@ -45,16 +55,25 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
     <p className="text-xs font-bold mb-3">{label === 'VER EN VIVO' ? 'EN VIVO · Transmisión de la jornada' : 'Transmisión de la jornada'}</p>
     {multiple && <h2 className="font-bold text-[#123E59] mb-4">{arena?.name}</h2>}
     {videoId ? <>
-      <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
+      <div ref={videoRef} className="aspect-video w-full overflow-hidden rounded-xl bg-black scroll-mt-20">
         <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
           title={'Transmisión de ' + event?.name + ' · ' + day.date + (arena ? ' · ' + arena.name : '')}
           className="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
       </div>
-      <p className="text-xs text-neutral-500 mt-3">Si el organizador restringe la reproducción, <a className="underline" href={'https://www.youtube.com/watch?v=' + videoId} target="_blank" rel="noopener noreferrer">abrir en YouTube</a>.</p>
     </> : <p>Transmisión aún no disponible.</p>}
-    <h2 className="font-display text-xl font-bold text-[#123E59] mt-8 mb-4">Pruebas de la jornada</h2>
-    <DayProgram eventId={day.eventId} date={day.date} arenaId={arenaId} />
+    <div ref={listsRef} className="mt-8 scroll-mt-20">
+      {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
+        : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
+          <button onClick={() => setSelectedList(null)} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver a las pruebas de la jornada</button>
+          {selectedDocument ? <DocumentViewer document={selectedDocument} mode="inline" /> : <p>Este listado ya no está disponible.</p>}
+        </section> : <>
+          <h2 className="font-display text-xl font-bold text-[#123E59] mb-4">Pruebas de la jornada</h2>
+          <DayProgram eventId={day.eventId} date={day.date} arenaId={arenaId} showResults={false}
+            onOpenStartList={id => setSelectedList({ kind: 'structured', id })}
+            onOpenListDocument={doc => setSelectedList({ kind: 'document', id: doc.id })} />
+        </>}
+    </div>
   </div>;
 }
 
@@ -67,5 +86,5 @@ export function TransmissionPage({ dayId: route }: { dayId: string }) {
   if (isLoading) return <p role="status" className="p-6 text-center">Cargando transmisión…</p>;
   if (!day || (requestedArena && !arena)) return <div className="p-6 text-center"><p>Jornada o pista no disponible.</p><a href="#" className="underline">Volver a concursos</a></div>;
   const youtubeUrl = arenaError && !requestedArena ? day.youtubeUrl : stream?.youtubeUrl || '';
-  return <Player day={day} arenaId={arena?.id} youtubeUrl={youtubeUrl} />;
+  return <Player key={`${day.id}/${arena?.id || ''}`} day={day} arenaId={arena?.id} youtubeUrl={youtubeUrl} />;
 }

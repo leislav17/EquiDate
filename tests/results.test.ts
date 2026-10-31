@@ -3,11 +3,28 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { validateResultColumns, validateResultEntries, reviewResultImport, resultPdf, resultColumnsForPhases, resultColumnGroups } from '../src/utils/results.ts';
+import { validateResultColumns, validateResultEntries, reviewResultImport, resultPdf, resultColumnsForPhases, resultColumnGroups, resultColumnsForFormat, validateResultDetails } from '../src/utils/results.ts';
 import type { CompetitionClass, DocumentItem } from '../src/types/equestrian.ts';
 
 const columns = [{ key: 'faults', label: 'Faltas' }, { key: 'time', label: 'Tiempo' }];
 const row = { position: 1, rider: 'Ana', horse: '', club: null, rank: '1', values: { faults: '0', time: '61,25' } };
+test('Optimum time, reference times, qualification and category rankings preserve source meaning', () => {
+  const optimum = resultColumnsForFormat('optimum');
+  assert.ok(optimum.some(c => c.key === 'time_difference'));
+  assert.deepEqual(validateResultDetails({ definition: 'Tiempo óptimo', allowedTime: '71', optimalTime: '62' }), { definition: 'Tiempo óptimo', allowedTime: '71', optimalTime: '62' });
+  const entries = [{ ...row, horse: 'Caballo', category: '3 MY', qualified: true, values: { time: '61,94', time_difference: '0,06' } }, { ...row, position: 2, horse: 'Caballo', category: '3 MN', qualified: false, values: { time: '61,94', time_difference: '0,06' } }];
+  const normalized = validateResultEntries(entries,optimum);
+  assert.equal(normalized[0].qualified,true);
+  assert.equal(normalized[1].qualified,false);
+  assert.equal(normalized[0].values?.time_difference,'0,06');
+  assert.throws(() => validateResultEntries([{ ...entries[0], qualified: 'yes' }],optimum));
+  assert.throws(() => validateResultEntries([entries[0],{...entries[0],position:2}],optimum));
+  assert.throws(() => validateResultColumns([{ key:'championship_points',label:'Puntos campeonato',scope:'championship' }]));
+  assert.throws(() => validateResultDetails({ championship: '1' }));
+  assert.deepEqual(resultColumnGroups(resultColumnsForFormat('jump_off')).map(g=>g.label),['Recorrido','Desempate']);
+  assert.deepEqual(resultColumnGroups(resultColumnsForFormat('two_rounds')).map(g=>g.label),['Recorrido 1','Recorrido 2','']);
+  assert.equal(validateResultEntries([row],columns)[0].qualified,undefined); // Never infer qualification from rank.
+});
 test('One and two phase formats keep faults and times distinct, including zeros and missing marks', () => {
   assert.deepEqual(resultColumnsForPhases(1), columns);
   const two = resultColumnsForPhases(2);
@@ -50,7 +67,7 @@ test('Result publication is atomic, admin-only, independent of start lists, and 
     INSERT INTO events VALUES('${event}','published'),('${draft}','draft');
     INSERT INTO competition_classes VALUES('${c1}','${event}','2026-10-31','${arena}','1',39),('${c2}','${event}','2026-10-31','${arena}','2',NULL),('${privateClass}','${draft}','2026-10-31','${arena}','3',5);
     INSERT INTO documents VALUES(gen_random_uuid(),'Historical PDF');`);
-  for (const file of ['20261031164507_structured_start_lists.sql', '20261031170402_optional_start_list_horse.sql', '20261031171539_structured_results.sql']) await db.exec(await readFile(new URL('../supabase/migrations/' + file, import.meta.url), 'utf8'));
+  for (const file of ['20261031164507_structured_start_lists.sql', '20261031170402_optional_start_list_horse.sql', '20261031171539_structured_results.sql', '20261031174558_result_details_and_qualification.sql']) await db.exec(await readFile(new URL('../supabase/migrations/' + file, import.meta.url), 'utf8'));
   const make = (classId = c1, entries = [row]) => ({ id: randomUUID(), classId, eventId: classId === privateClass ? draft : event, date: '2026-10-31', arenaId: arena, number: classId === c1 ? '1' : classId === c2 ? '2' : '3', expectedRevision: null as string | null, reviewed: true, uncertainties: [], sourceName: 'resultados.pdf', columns, entries });
   const asRole = async (role: string, claims: object, action: () => Promise<void>) => {
     await db.exec('SET ROLE ' + role);
@@ -106,6 +123,21 @@ test('Result publication is atomic, admin-only, independent of start lists, and 
       const stored = (await db.query<{ columns: typeof twoPhase.columns; entries: typeof twoPhase.entries }>('SELECT v.columns,v.entries FROM result_list_versions v JOIN result_lists h ON h.version_id=v.id WHERE h.class_id=$1',[c2])).rows[0];
       assert.deepEqual(stored.columns,twoPhase.columns);
       assert.deepEqual(stored.entries,twoPhase.entries);
+    });
+  });
+  await t.test('Reference times, red-rank flags, categories and groups survive publication; championship data and invalid flags reject atomically', async () => {
+    await asRole('authenticated',admin,async () => {
+      const head = (await db.query<{revision:string}>('SELECT revision FROM result_lists WHERE class_id=$1',[c2])).rows[0];
+      const detailed = { ...make(c2), expectedRevision:head.revision, columns:resultColumnsForFormat('optimum'), details:{ definition:'Tiempo óptimo',height:'0,90 m',allowedTime:'71',optimalTime:'62' }, entries:[{...row, horse:'Caballo',category:'3 MY',qualified:true,values:{time:'61,94',time_difference:'0,06'}},{...row,position:2,horse:'Caballo',category:'3 MN',qualified:false,values:{time:'61,94',time_difference:'0,06'}}] };
+      await assert.rejects(save([{...detailed,entries:[{...detailed.entries[0],qualified:'yes'}]}]));
+      await assert.rejects(save([{...detailed,columns:[{key:'championship_points',label:'Puntos',scope:'championship'}]}]));
+      await assert.rejects(save([{...detailed,details:{optimalTime:62}}]));
+      await save([detailed]);
+      await save([detailed]); // Retry includes every detail, not just scores.
+      const stored = (await db.query<{details:typeof detailed.details;entries:typeof detailed.entries}>('SELECT v.details,v.entries FROM result_list_versions v JOIN result_lists h ON h.version_id=v.id WHERE h.class_id=$1',[c2])).rows[0];
+      assert.deepEqual(stored.details,detailed.details);
+      assert.deepEqual(stored.entries,detailed.entries);
+      await assert.rejects(save([{...detailed,details:{...detailed.details,optimalTime:'63'}}]));
     });
   });
   await db.close();

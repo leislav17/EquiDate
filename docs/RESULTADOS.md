@@ -27,4 +27,18 @@ En Administración se puede elegir una o dos fases para descargar la plantilla. 
 
 Los valores de cada fase se conservan de forma independiente, incluidos ceros y campos vacíos. No se suman faltas, no se completan tiempos y no se recalculan puestos. Las columnas de documentos existentes con otras claves se siguen mostrando con sus etiquetas originales.
 
+## Tiempo óptimo, recorridos y clasificados
+
+La migración `20261031174558_result_details_and_qualification.sql` agrega `details` a cada versión, sin modificar sus filas históricas. `details` admite `definition`, `height`, `allowedTime`, `optimalTime` y `rounds` (hasta cuatro objetos con `label`, `allowedTime` y `optimalTime`). Todos los tiempos son textos originales: se conservan las comas y los blancos.
+
+La plantilla ofrece un recorrido, tiempo óptimo, dos fases, recorrido y desempate, o doble recorrido. Las columnas detallan Faltas obstáculos, Faltas tiempo, Total faltas y Tiempo por recorrido. En tiempo óptimo se agrega `time_difference` (Diferencia al óptimo). El valor objetivo se muestra en las condiciones de la prueba, no se repite en cada fila. El total de faltas de toda la prueba, cuando figure, es una columna independiente; nunca se confunde con un total del campeonato ni se calcula automáticamente.
+
+Cada columna puede tener `group` para conservar títulos como Recorrido, Desempate, Fase 1 o Recorrido 2. Los resultados anteriores con dos fases simplificadas siguen funcionando. Las columnas marcadas con `scope: "championship"` son rechazadas: no se importan puntos, acumulados, P11/P12/P13/P14, campeón/subcampeón ni tablas finales de campeonato. `scope: "class"` es opcional para las columnas propias de la prueba.
+
+Cada fila admite `category` y `qualified` (booleano opcional). Los puestos se conservan aunque reinicien en otra categoría; el mismo binomio puede tener resultados en categorías distintas. `qualified: true` muestra únicamente el número del puesto en negrita y bordó EquiDate (`#A61E4D`), sin etiqueta ni leyenda visible. La distinción también se comunica a lectores de pantalla. `false` no lo resalta; ausencia significa que no se informó esa distinción. Nunca inferir el dato a partir del puesto, medallas, cantidad de inscriptos ni una regla deportiva supuesta. Corresponde marcarlo solo después de comprobar el número rojo de la fila en el documento, según la indicación de la propietaria.
+
+`python scripts/extract-result-evidence.py origen.pdf evidencia.json` extrae texto por página y candidatos de números rojos junto con coordenadas y texto de la fila. Requiere pypdf y pdfplumber. Es una lectura local: no escribe en Supabase ni decide clasificaciones. Evita interpretar el título vertical rojo “Clasificación” como un participante. Se debe renderizar y revisar el original antes de asociar la evidencia con cada fila.
+
+Referencias revisadas: RESULTADOS SABADO CAE.pdf (10/10/2026) y RESULTADOS DOMINGO.pdf (11/10/2026), del Club Alemán de Equitación. No son resultados de San Diego. En el archivo del sábado, las páginas 4, 7 y 9 corresponden a finales de campeonato y se excluyen de la importación de pruebas; las columnas de puntos de campeonato que comparten página con resultados también quedan fuera. No cargar estos documentos reales sin una revisión separada de sus asociaciones y filas.
+
 `equidate_import_result_lists(batch)` publica de forma atómica e idempotente; `equidate_unpublish_result_list(target,expected_revision)` retira sin borrar versiones. Los resultados nunca sobrescriben el contador manual ni el contador derivado del orden de ingreso.

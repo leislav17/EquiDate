@@ -1,4 +1,3 @@
-import React from 'react';
 import { Bell, Award } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { sortClasses, sortArenas, formatClassSchedule } from '../../utils/schedule';
@@ -45,18 +44,31 @@ export function DayProgram({ eventId, date, arenaId }: { eventId: string; date: 
     const scheduleLabel = formatClassSchedule(entry);
     const ident = (entry.number || '').trim();
     const identLabel = !ident ? 'Prueba' : ident.toLowerCase().startsWith('prueba') ? ident : `Prueba ${ident}`;
+    const hasParticipants = typeof entry.participantCount === 'number' && entry.participantCount !== null;
 
     return (
       <article key={entry.id} className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5 shadow-2xs">
-        <div className="flex gap-3 sm:gap-5">
-          {scheduleLabel ? (
-            <div className="text-[#123E59] text-sm font-bold shrink-0 pt-0.5">{scheduleLabel}</div>
-          ) : null}
-          <div className="min-w-0 flex-1">
-            <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D]">{identLabel}</p>
-            <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
-            {entry.description && <p className="text-sm text-neutral-500 mt-1">{entry.description}</p>}
+        <div className="flex gap-3 sm:gap-5 justify-between items-start">
+          <div className="flex gap-3 sm:gap-5 min-w-0 flex-1">
+            {scheduleLabel ? (
+              <div className="text-[#123E59] text-sm font-bold shrink-0 pt-0.5">{scheduleLabel}</div>
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D]">{identLabel}</p>
+              <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
+              {entry.description && <p className="text-sm text-neutral-500 mt-1">{entry.description}</p>}
+            </div>
           </div>
+
+          {/* Cantidad de participantes en la esquina superior derecha */}
+          {hasParticipants && (
+            <div
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-semibold ml-2 select-none"
+              title={`Cantidad de participantes: ${entry.participantCount}`}
+            >
+              <span>Cantidad de participantes: {entry.participantCount}</span>
+            </div>
+          )}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {attached.map(action)}

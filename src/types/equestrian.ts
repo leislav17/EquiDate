@@ -81,6 +81,7 @@ export interface CompetitionClass {
   order: number;
   isApproximate?: boolean;
   isContinuous?: boolean;
+  participantCount?: number | null;
 }
 
 export interface CompetitionArena {

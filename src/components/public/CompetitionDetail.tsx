@@ -4,7 +4,8 @@ import {
   formatFullDateRange,
   formatDayHeader,
   getDaysBetween,
-  getEventTemporalStatus
+  getEventTemporalStatus,
+  getArgentinaTodayStr
 } from '../../utils/dateUtils';
 import {
   ArrowLeft,
@@ -37,6 +38,7 @@ export const CompetitionDetail: React.FC = () => {
 
   const event = selectedEventId ? getEventById(selectedEventId) : null;
   const allDocs = selectedEventId ? getDocumentsForEvent(selectedEventId) : [];
+  const argentinaTodayStr = useMemo(() => getArgentinaTodayStr(), []);
 
   // Anteprogramas (type === 'PROGRAM')
   const anteprogramas = useMemo(() => {
@@ -53,7 +55,7 @@ export const CompetitionDetail: React.FC = () => {
     return allDocs.filter((d) => d.type === 'OTHER');
   }, [allDocs]);
 
-  // Accordion states for days
+  // Accordion states for days: all days start collapsed by default
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const [isInfoOpen, setIsInfoOpen] = useState(false);
 
@@ -80,15 +82,10 @@ export const CompetitionDetail: React.FC = () => {
     });
   }, [event, allDocs, classes, competitionDays, streams]);
 
-  // Initialize first day with content open by default
+  // When changing or entering a competition, ensure all days remain collapsed by default
   React.useEffect(() => {
-    if (days.length > 0 && Object.keys(openDays).length === 0) {
-      const firstWithContent = days.find((d) => d.hasContent) || days[0];
-      if (firstWithContent) {
-        setOpenDays({ [firstWithContent.dateStr]: true });
-      }
-    }
-  }, [days, openDays]);
+    setOpenDays({});
+  }, [selectedEventId]);
 
   if (!event) {
     return (
@@ -300,8 +297,7 @@ export const CompetitionDetail: React.FC = () => {
           {/* ======================================================== */}
           {days.map((day) => {
             const isOpen = !!openDays[day.dateStr];
-            const hasStartLists = day.startLists.length > 0;
-            const hasResults = day.results.length > 0;
+            const isToday = day.dateStr === argentinaTodayStr;
 
             return (
               <div
@@ -317,22 +313,19 @@ export const CompetitionDetail: React.FC = () => {
                     isOpen ? 'bg-neutral-100 text-neutral-900' : 'bg-white hover:bg-neutral-50 text-neutral-800'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        hasResults
-                          ? 'bg-emerald-600'
-                          : hasStartLists
-                          ? 'bg-[#123E59]'
-                          : 'bg-neutral-300'
-                      }`}
-                    />
-                    <span className="font-display text-base sm:text-lg font-black tracking-tight text-[#123E59]">
+                  <div className="flex flex-col items-start min-w-0 pr-3">
+                    {isToday && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#A61E4D] text-white text-[10px] font-black uppercase tracking-wider mb-1.5 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        HOY
+                      </span>
+                    )}
+                    <span className="font-display text-base sm:text-lg font-black tracking-tight text-[#123E59] leading-tight">
                       {day.fullFormatted}
                     </span>
                   </div>
 
-                  <div className="flex items-center">
+                  <div className="flex items-center shrink-0">
                     {isOpen ? (
                       <ChevronUp className="w-5 h-5 text-neutral-500" />
                     ) : (

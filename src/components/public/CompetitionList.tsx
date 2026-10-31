@@ -4,7 +4,9 @@ import {
   MONTHS_FULL,
   formatCardDate,
   getEventTemporalStatus,
-  getDaysBetween
+  getDaysBetween,
+  getArgentinaTodayStr,
+  getArgentinaDate,
 } from '../../utils/dateUtils';
 import {
   Calendar as CalendarIcon,
@@ -31,16 +33,20 @@ export const CompetitionList: React.FC = () => {
     setSelectedEventId
   } = useEquestrian();
 
+  // Current Argentina date
+  const argentinaTodayStr = useMemo(() => getArgentinaTodayStr(), []);
+  const argentinaDate = useMemo(() => getArgentinaDate(), []);
+
   // View mode: 'list' (default for mobile) | 'calendar'
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
-  // Filters expandable state (expanded by default so user immediately sees controls, easily collapsed)
-  const [isFiltersExpanded, setIsFiltersExpanded] = useState<boolean>(true);
+  // Filters expandable state (collapsed by default)
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState<boolean>(false);
 
   // Available years dynamically derived from published events
   const availableYears = useMemo(() => {
     const years = new Set<number>();
-    years.add(2026); // Ensure 2026 is present
+    years.add(argentinaDate.year);
     events.forEach((evt) => {
       if (evt.status === 'published') {
         const sYear = new Date(evt.startDate + 'T00:00:00').getFullYear();
@@ -50,9 +56,9 @@ export const CompetitionList: React.FC = () => {
       }
     });
     return Array.from(years).sort((a, b) => a - b);
-  }, [events]);
+  }, [events, argentinaDate.year]);
 
-  // Filter published events matching selected year and month
+  // Filter published events matching selected year and month, or upcoming default
   const filteredEvents = useMemo(() => {
     return events
       .filter((evt) => {
@@ -61,6 +67,16 @@ export const CompetitionList: React.FC = () => {
         const end = new Date(evt.endDate + 'T00:00:00');
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
 
+        // 1. MODO POR DEFECTO: PRÓXIMOS CONCURSOS
+        if (selectedMonth === -2) {
+          // Concursos cuya fecha de finalización sea igual o posterior a la fecha actual en Argentina.
+          // Incluye los que ya comenzaron pero todavía no finalizaron (endDate >= argentinaTodayStr).
+          // No limitado al mes actual: también aparecen los concursos de los próximos meses y años.
+          // Los concursos finalizados no aparecen.
+          return evt.endDate >= argentinaTodayStr;
+        }
+
+        // 2. FILTRO POR AÑO Y MES ESPECÍFICO
         const startYear = start.getFullYear();
         const endYear = end.getFullYear();
 
@@ -81,7 +97,7 @@ export const CompetitionList: React.FC = () => {
         return start <= lastDayOfTarget && end >= targetDate;
       })
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  }, [events, activeYear, selectedMonth]);
+  }, [events, activeYear, selectedMonth, argentinaTodayStr]);
 
   // Find all current events (ACTUAL) across all published events regardless of filter
   const currentEvents = useMemo(() => {
@@ -204,12 +220,46 @@ export const CompetitionList: React.FC = () => {
 
   // Reset filters action
   const handleResetFilters = () => {
-    setActiveYear(2026);
-    setSelectedMonth(9); // Octubre (0-indexed)
+    setActiveYear(argentinaDate.year);
+    setSelectedMonth(-2); // Próximos concursos
   };
 
-  // Calendar calculations (use selectedMonth or default to current month 9 if 'all')
-  const calendarMonth = selectedMonth >= 0 ? selectedMonth : 9;
+  // Month navigation for calendar:
+  // If selectedMonth is -2 (upcoming) or -1 (all), calendarMonth defaults to current Argentina month
+  const calendarMonth = selectedMonth >= 0 ? selectedMonth : argentinaDate.month;
+
+  const handlePrevMonth = () => {
+    if (calendarMonth === 0) {
+      setActiveYear(activeYear - 1);
+      setSelectedMonth(11);
+    } else {
+      setSelectedMonth(calendarMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (calendarMonth === 11) {
+      setActiveYear(activeYear + 1);
+      setSelectedMonth(0);
+    } else {
+      setSelectedMonth(calendarMonth + 1);
+    }
+  };
+
+  // Events occurring in the active calendar month
+  const calendarEvents = useMemo(() => {
+    const firstDayOfMonth = new Date(activeYear, calendarMonth, 1);
+    const lastDayOfMonth = new Date(activeYear, calendarMonth + 1, 0);
+
+    return events.filter((evt) => {
+      if (evt.status !== 'published') return false;
+      const start = new Date(evt.startDate + 'T00:00:00');
+      const end = new Date(evt.endDate + 'T00:00:00');
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+      return start <= lastDayOfMonth && end >= firstDayOfMonth;
+    });
+  }, [events, activeYear, calendarMonth]);
+
   const calendarData = useMemo(() => {
     const firstDayOfMonth = new Date(activeYear, calendarMonth, 1);
     const lastDayOfMonth = new Date(activeYear, calendarMonth + 1, 0);
@@ -228,7 +278,7 @@ export const CompetitionList: React.FC = () => {
       const dayStr = String(day).padStart(2, '0');
       const dateStr = `${activeYear}-${monthStr}-${dayStr}`;
 
-      const eventsOnDay = filteredEvents.filter((evt) => {
+      const eventsOnDay = calendarEvents.filter((evt) => {
         const daysSpan = getDaysBetween(evt.startDate, evt.endDate);
         return daysSpan.includes(dateStr);
       });
@@ -241,11 +291,13 @@ export const CompetitionList: React.FC = () => {
     }
 
     return { days, startingDayOfWeek, daysInMonth };
-  }, [activeYear, calendarMonth, filteredEvents]);
+  }, [activeYear, calendarMonth, calendarEvents]);
 
-  // Formatted header string e.g. "OCTUBRE 2026" or "AÑO 2026"
+  // Formatted header string e.g. "PRÓXIMOS CONCURSOS", "OCTUBRE 2026" or "TODOS LOS MESES 2026"
   const filterTitle =
-    selectedMonth >= 0
+    selectedMonth === -2
+      ? 'PRÓXIMOS CONCURSOS'
+      : selectedMonth >= 0
       ? `${MONTHS_FULL[selectedMonth].toUpperCase()} ${activeYear}`
       : `TODOS LOS MESES ${activeYear}`;
 
@@ -460,7 +512,9 @@ export const CompetitionList: React.FC = () => {
               </span>
               {!isFiltersExpanded && (
                 <span className="text-xs text-neutral-500 font-semibold truncate ml-1">
-                  · {activeYear} {selectedMonth >= 0 ? `· ${MONTHS_FULL[selectedMonth]}` : '· Todos los meses'}
+                  {selectedMonth === -2
+                    ? '· Próximos concursos'
+                    : `· ${activeYear} ${selectedMonth >= 0 ? `· ${MONTHS_FULL[selectedMonth]}` : '· Todos los meses'}`}
                 </span>
               )}
             </div>
@@ -506,6 +560,9 @@ export const CompetitionList: React.FC = () => {
                     onChange={(e) => setSelectedMonth(Number(e.target.value))}
                     className="w-full h-11 sm:h-12 pl-4 pr-10 rounded-xl bg-[#123E59] text-white text-xs sm:text-sm font-extrabold tracking-wider appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#93c5fd] transition-all shadow-xs uppercase"
                   >
+                    <option value={-2} className="bg-neutral-900 text-white py-1 font-bold">
+                      PRÓXIMOS CONCURSOS
+                    </option>
                     <option value={-1} className="bg-neutral-900 text-white py-1">
                       TODOS LOS MESES
                     </option>
@@ -519,16 +576,20 @@ export const CompetitionList: React.FC = () => {
                 </div>
               </div>
 
-              {/* ACCIÓN: RESTABLECER */}
+              {/* ACCIÓN: RESETEAR FILTROS */}
               <div className="flex items-center justify-end sm:justify-start pt-1 sm:pt-0 sm:ml-auto">
                 <button
                   type="button"
                   onClick={handleResetFilters}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-neutral-500 hover:text-[#123E59] hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer"
-                  title="Restablecer filtros a la fecha actual"
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                    selectedMonth === -2 && activeYear === argentinaDate.year
+                      ? 'text-neutral-400 bg-neutral-100/50 hover:bg-neutral-100'
+                      : 'text-[#123E59] bg-neutral-100 hover:bg-neutral-200 shadow-2xs'
+                  }`}
+                  title="Resetear filtros"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>RESTABLECER</span>
+                  <span>Resetear filtros</span>
                 </button>
               </div>
             </div>
@@ -695,8 +756,41 @@ export const CompetitionList: React.FC = () => {
           /* CALENDAR VIEW                                           */
           /* ======================================================== */
           <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-xs">
+            {/* Calendar Month Navigation Header with Arrows */}
+            <div className="flex items-center justify-between px-3 sm:px-5 py-3 bg-[#123E59] text-white border-b border-[#0e3247]">
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                aria-label={`Mes anterior, ${calendarMonth === 0 ? MONTHS_FULL[11] : MONTHS_FULL[calendarMonth - 1]}`}
+                className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white select-none shrink-0"
+              >
+                <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                <span className="hidden sm:inline text-xs font-bold uppercase">Anterior</span>
+              </button>
+
+              <div className="flex items-center gap-2 text-center select-none min-w-0">
+                <CalendarIcon className="w-4 h-4 text-[#93c5fd] shrink-0 hidden xs:inline" />
+                <span className="font-display text-sm sm:text-base md:text-lg font-black tracking-wide uppercase truncate">
+                  {MONTHS_FULL[calendarMonth]} {activeYear}
+                </span>
+                <span className="text-xs text-white/70 font-semibold font-mono hidden sm:inline">
+                  · {calendarEvents.length} {calendarEvents.length === 1 ? 'concurso' : 'concursos'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                aria-label={`Mes siguiente, ${calendarMonth === 11 ? MONTHS_FULL[0] : MONTHS_FULL[calendarMonth + 1]}`}
+                className="p-2 sm:px-3 sm:py-2 rounded-lg bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white select-none shrink-0"
+              >
+                <span className="hidden sm:inline text-xs font-bold uppercase">Siguiente</span>
+                <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+              </button>
+            </div>
+
             {/* Calendar Day Header */}
-            <div className="grid grid-cols-7 border-b border-neutral-200 bg-[#123E59] text-[11px] font-extrabold text-white text-center py-2.5">
+            <div className="grid grid-cols-7 border-b border-neutral-200 bg-[#0e3247] text-[11px] font-extrabold text-white/90 text-center py-2 sm:py-2.5">
               <span>LUN</span>
               <span>MAR</span>
               <span>MIÉ</span>

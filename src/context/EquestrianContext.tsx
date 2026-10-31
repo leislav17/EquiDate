@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '
 import { Session } from '@supabase/supabase-js';
 import { documentAssociation, documentLabel, isGeneralDocumentType } from '../utils/documents';
 import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
+import { getArgentinaDate } from '../utils/dateUtils';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -32,7 +33,7 @@ interface EquestrianContextType {
   documents: DocumentItem[];
   activeYear: number;
   setActiveYear: (year: number) => void;
-  selectedMonth: number; // -1 for all months, 0 to 11 for specific month
+  selectedMonth: number; // -2 for upcoming (default), -1 for all months, 0 to 11 for specific months
   setSelectedMonth: (month: number) => void;
   selectedEventId: string | null;
   setSelectedEventId: (id: string | null) => void;
@@ -62,6 +63,7 @@ interface EquestrianContextType {
   updateEvent: (id: string, updates: Partial<EquestrianEvent>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   toggleEventStatus: (id: string) => Promise<void>;
+  uploadEventImage: (file: File) => Promise<string>;
 
   // Document actions
   addDocument: (
@@ -98,38 +100,56 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [classes, setClasses] = useState<CompetitionClass[]>([]);
   const [dataError, setDataError] = useState<string | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const [activeYear, setActiveYear] = useState(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [activeYear, setActiveYear] = useState(() => getArgentinaDate().year);
+  const [selectedMonth, setSelectedMonth] = useState<number>(-2);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const isCurrentRouteAdmin = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
     const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
     const hash = window.location.hash.toLowerCase();
-    return path === '/admin' || hash === '#/admin' || hash === '#admin';
+    return (
+      path === '/admin' ||
+      path.startsWith('/admin/') ||
+      hash === '#/admin' ||
+      hash === '#admin' ||
+      hash.startsWith('#/admin/') ||
+      hash.startsWith('#admin/')
+    );
   }, []);
 
   const [activeView, setActiveViewState] = useState<'public' | 'admin'>(() => {
     if (typeof window === 'undefined') return 'public';
     const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
     const hash = window.location.hash.toLowerCase();
-    return path === '/admin' || hash === '#/admin' || hash === '#admin' ? 'admin' : 'public';
+    return (
+      path === '/admin' ||
+      path.startsWith('/admin/') ||
+      hash === '#/admin' ||
+      hash === '#admin' ||
+      hash.startsWith('#/admin/') ||
+      hash.startsWith('#admin/')
+        ? 'admin'
+        : 'public'
+    );
   });
 
   const setActiveView = useCallback((view: 'public' | 'admin') => {
     setActiveViewState(view);
     if (typeof window !== 'undefined') {
-      if (view === 'admin') {
-        const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
-        const hash = window.location.hash.toLowerCase();
-        if (path !== '/admin' && hash !== '#/admin' && hash !== '#admin') {
-          window.history.pushState({}, '', '/admin');
-        }
-      } else {
-        const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
-        const hash = window.location.hash.toLowerCase();
-        if (path === '/admin' || hash === '#/admin' || hash === '#admin') {
-          window.history.pushState({}, '', '/');
-        }
+      const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      const hash = window.location.hash.toLowerCase();
+      const isAdminRoute =
+        path === '/admin' ||
+        path.startsWith('/admin/') ||
+        hash === '#/admin' ||
+        hash === '#admin' ||
+        hash.startsWith('#/admin/') ||
+        hash.startsWith('#admin/');
+
+      if (view === 'admin' && !isAdminRoute) {
+        window.history.pushState({}, '', '/admin');
+      } else if (view === 'public' && isAdminRoute) {
+        window.history.pushState({}, '', '/');
       }
     }
   }, []);
@@ -314,6 +334,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           number: entry.number, name: entry.name, description: entry.description || '', order: entry.sort_order,
           isApproximate: Boolean(entry.is_approximate),
           isContinuous: Boolean(entry.is_continuous),
+          participantCount: typeof entry.participant_count === 'number' ? entry.participant_count : null,
         })));
       }
       const [arenaResponse, streamResponse] = await Promise.all([
@@ -453,6 +474,47 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       throw new Error(`Error al subir archivo a Storage: ${error.message}`);
     }
     return { path, mimeType: effectiveMime };
+  };
+
+  const uploadEventImage = async (file: File): Promise<string> => {
+    requireAdmin();
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase no está configurado para subir archivos.');
+    }
+    if (file.size === 0) {
+      throw new Error('El archivo seleccionado está vacío.');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error('La imagen supera el tamaño máximo permitido de 5 MB.');
+    }
+
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+    const fileName = (file.name || '').toLowerCase();
+    const ext = fileName.split('.').pop() || '';
+
+    if (!allowedExts.includes(ext) || !allowedMimes.includes(file.type.toLowerCase())) {
+      throw new Error('Formato no permitido. Solo se aceptan imágenes JPG, JPEG, PNG y WebP.');
+    }
+
+    const uniqueId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const normalizedExt = ext === 'jpeg' ? 'jpg' : ext;
+    const path = `competition-images/${uniqueId}.${normalizedExt}`;
+
+    const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(path, file, {
+      contentType: file.type || 'image/jpeg',
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+    if (uploadError) {
+      throw new Error(`Error al subir la imagen a Storage: ${uploadError.message}`);
+    }
+
+    const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(path);
+    return data.publicUrl;
   };
 
   const saveDocument = async (entry: DocumentItem, file?: File | Blob, pages?: DocumentPageInput[]) => {
@@ -666,6 +728,9 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!arena) throw new Error('Seleccioná una pista del concurso.');
     const dayId = await ensureDay(entry.eventId, entry.date);
     const cleanTime = entry.time ? entry.time.trim().slice(0, 5) : null;
+    const validParticipantCount = typeof entry.participantCount === 'number' && entry.participantCount >= 0
+      ? Math.floor(entry.participantCount)
+      : null;
     const basePayload = {
       day_id: dayId,
       arena_id: arena.id,
@@ -681,11 +746,22 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...basePayload,
       is_approximate: Boolean(entry.isApproximate),
       is_continuous: Boolean(entry.isContinuous),
+      participant_count: validParticipantCount,
     };
     let response = entry.id
       ? await supabase.from('competition_classes').update(payloadWithFlags).eq('id', entry.id).select('id').single()
       : await supabase.from('competition_classes').insert(payloadWithFlags).select('id').single();
 
+    if (response.error && (response.error.message?.includes('participant_count') || response.error.code === '42703')) {
+      const withoutCount = {
+        ...basePayload,
+        is_approximate: Boolean(entry.isApproximate),
+        is_continuous: Boolean(entry.isContinuous),
+      };
+      response = entry.id
+        ? await supabase.from('competition_classes').update(withoutCount).eq('id', entry.id).select('id').single()
+        : await supabase.from('competition_classes').insert(withoutCount).select('id').single();
+    }
     if (response.error && (response.error.message?.includes('is_approximate') || response.error.message?.includes('is_continuous') || response.error.code === '42703')) {
       response = entry.id
         ? await supabase.from('competition_classes').update(basePayload).eq('id', entry.id).select('id').single()
@@ -721,6 +797,9 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const payloadArray = entries.map(entry => {
       const dayId = dayIdMap.get(`${entry.eventId}_${entry.date}`);
       const cleanTime = entry.time ? entry.time.trim().slice(0, 5) : null;
+      const validParticipantCount = typeof entry.participantCount === 'number' && entry.participantCount >= 0
+        ? Math.floor(entry.participantCount)
+        : null;
       return {
         day_id: dayId!,
         arena_id: entry.arenaId,
@@ -733,12 +812,18 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         sort_order: entry.order,
         is_approximate: Boolean(entry.isApproximate),
         is_continuous: Boolean(entry.isContinuous),
+        participant_count: validParticipantCount,
       };
     });
 
     let { error } = await supabase.from('competition_classes').insert(payloadArray).select('id');
+    if (error && (error.message?.includes('participant_count') || error.code === '42703')) {
+      const withoutCount = payloadArray.map(({ participant_count, ...rest }) => rest);
+      const res = await supabase.from('competition_classes').insert(withoutCount).select('id');
+      error = res.error;
+    }
     if (error && (error.message?.includes('is_approximate') || error.message?.includes('is_continuous') || error.code === '42703')) {
-      const fallbackArray = payloadArray.map(({ is_approximate, is_continuous, ...base }) => base);
+      const fallbackArray = payloadArray.map(({ is_approximate, is_continuous, participant_count, ...base }) => base);
       const res = await supabase.from('competition_classes').insert(fallbackArray).select('id');
       error = res.error;
     }
@@ -835,7 +920,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
-    setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus,
+    setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus, uploadEventImage,
     addDocument, updateDocument, deleteDocument, reorderDocument,
     getDocumentsForEvent: id => namedDocuments.filter(doc => doc.eventId === id).sort((first, second) => first.order - second.order),
     getEventById: id => events.find(event => event.id === id),

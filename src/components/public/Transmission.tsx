@@ -38,6 +38,10 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   useEffect(() => {
     // Keep the selected list below the pinned player without restarting playback.
     if (selectedList && listsRef.current) {
+      if (selectedList.kind === 'structured' && window.matchMedia('(min-width: 1024px)').matches) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       const pinnedHeight = (videoRef.current?.getBoundingClientRect().height || 0) + 65;
       window.scrollTo({ top: window.scrollY + listsRef.current.getBoundingClientRect().top - pinnedHeight - 16, behavior: 'smooth' });
     }
@@ -48,8 +52,9 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const videoId = getYouTubeId(youtubeUrl);
   const arena = arenas.find(item => item.id === arenaId);
   const multiple = arenas.filter(item => item.eventId === day.eventId).length > 1;
-  return <div className="max-w-4xl mx-auto">
-    {videoId ? <div ref={videoRef} className="sticky top-[65px] z-30 bg-black">
+  const sidebar = selectedList?.kind === 'structured';
+  return <div className={sidebar ? 'max-w-[1600px] mx-auto lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6' : 'max-w-4xl mx-auto'}>
+    {videoId ? <div ref={videoRef} className="sticky top-[65px] z-30 bg-black lg:col-start-1 lg:row-start-1">
       <div className="aspect-video max-h-[50svh] w-full overflow-hidden">
         <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
           title={'Transmisión de ' + event?.name + ' · ' + day.date + (arena ? ' · ' + arena.name : '')}
@@ -57,7 +62,7 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
           referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
       </div>
     </div> : <p className="px-4 pt-6">Transmisión aún no disponible.</p>}
-    <div className="px-4 py-6">
+    <div className="px-4 py-6 lg:col-start-1 lg:row-start-2 min-w-0">
     <button onClick={() => { setSelectedEventId(day.eventId); setActiveView('public'); window.location.hash = ''; }}
       className="flex items-center gap-2 min-h-11 text-sm font-bold text-[#123E59] mb-4">
       <ArrowLeft className="w-4 h-4" />Volver al concurso
@@ -66,7 +71,8 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
     <h1 className="font-display text-2xl font-black text-[#123E59] mt-1 mb-4">{event?.name}</h1>
     <p className="text-xs font-bold mb-3">{label === 'VER EN VIVO' ? 'EN VIVO · Transmisión de la jornada' : 'Transmisión de la jornada'}</p>
     {multiple && <h2 className="font-bold text-[#123E59] mb-4">{arena?.name}</h2>}
-    <div ref={listsRef} className="mt-8 scroll-mt-20">
+    </div>
+    <div ref={listsRef} className={sidebar ? 'px-4 pb-6 min-w-0 lg:px-0 lg:pr-4 lg:py-4 lg:sticky lg:top-[65px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-65px)] lg:overflow-y-auto' : 'px-4 pb-6 scroll-mt-20'}>
       {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
           <button onClick={() => setSelectedList(null)} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver a las pruebas de la jornada</button>
@@ -77,7 +83,6 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
             onOpenStartList={id => setSelectedList({ kind: 'structured', id })}
             onOpenListDocument={doc => setSelectedList({ kind: 'document', id: doc.id })} />
         </>}
-    </div>
     </div>
   </div>;
 }

@@ -5,11 +5,11 @@ import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists
 
 export function StartListRows({ entries }: { entries: StartEntry[] }) {
   return <ol className="divide-y divide-neutral-200" aria-label="Orden de ingreso">
-    {entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-x-3 gap-y-1 py-5">
-      <span className="row-span-3 sm:row-span-1 text-neutral-500 tabular-nums">{row.position}.</span>
+    {entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-x-3 gap-y-1 py-5">
+      <span className="row-span-3 @min-[36rem]:row-span-1 text-neutral-500 tabular-nums">{row.position}.</span>
       <span className="font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.horse}</span>
-      <span className="col-start-2 sm:col-start-auto text-neutral-700 break-words [overflow-wrap:anywhere]">{row.rider}</span>
-      {row.club && <span className="col-start-2 sm:col-start-auto text-sm text-neutral-500 sm:text-right break-words [overflow-wrap:anywhere]">{row.club}</span>}
+      <span className="col-start-2 @min-[36rem]:col-start-auto text-neutral-700 break-words [overflow-wrap:anywhere]">{row.rider}</span>
+      {row.club && <span className="col-start-2 @min-[36rem]:col-start-auto text-sm text-neutral-500 @min-[36rem]:text-right break-words [overflow-wrap:anywhere]">{row.club}</span>}
     </li>)}
   </ol>;
 }
@@ -24,7 +24,7 @@ export function StartListView({ classId, onBack, embedded = false }: { classId: 
   const query = search.trim().toLocaleLowerCase();
   const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.club || ''} ${row.position}`.toLocaleLowerCase().includes(query)) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
-  return <section className={embedded ? 'bg-white text-neutral-900 rounded-xl border border-neutral-200 p-4 sm:p-6' : 'min-h-[calc(100vh-64px)] bg-white text-neutral-900 px-4 sm:px-8 py-5 sm:py-8'} aria-label="Listado de la prueba">
+  return <section className={embedded ? '@container bg-white text-neutral-900 rounded-xl border border-neutral-200 p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-white text-neutral-900 px-4 sm:px-8 py-5 sm:py-8'} aria-label="Listado de la prueba">
     <div className="max-w-5xl mx-auto">
       <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />{embedded ? 'Volver a las pruebas de la jornada' : 'Volver al concurso'}</button>
       {startListsError ? <div role="alert" className="py-8">{startListsError}<button className="underline ml-2 min-h-11" onClick={() => void refreshData()}>Reintentar</button></div> : !entry || !list ? <p className="py-8">Este listado no está publicado.</p> : <>
@@ -35,7 +35,7 @@ export function StartListView({ classId, onBack, embedded = false }: { classId: 
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>
         <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo o club" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Orden</span><span className="sm:hidden">Caballo / Jinete / Club</span><span className="hidden sm:block">Caballo</span><span className="hidden sm:block">Jinete</span><span className="hidden sm:block text-right">Club</span></div>
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Orden</span><span className="@min-[36rem]:hidden">Caballo / Jinete / Club</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block text-right">Club</span></div>
         <StartListRows entries={rows} />
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}

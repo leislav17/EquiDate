@@ -5,11 +5,12 @@ import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type
 import { resultDisplayColumns, resultDisplayValue } from '../../utils/resultDisplay';
 
 export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }) {
-  const fields = [['Definición', details.definition], ['Altura', details.height], ['Tiempo permitido', details.allowedTime], ['Tiempo óptimo', details.optimalTime]].filter(([,value]) => value);
-  if (!fields.length && !details.rounds?.length) return null;
-  return <div className="mt-4 flex flex-wrap items-start gap-x-6 gap-y-3 text-sm text-neutral-700" aria-label="Condiciones de la prueba">
-    <dl className="contents">{fields.map(([label,value]) => <div key={label}><dt className="text-xs text-neutral-500">{label}</dt><dd className="font-semibold break-words">{value}</dd></div>)}</dl>
-    {details.rounds?.map((round,i) => <div key={i}><p className="font-semibold text-[#123E59]">{round.label}</p><dl className="flex flex-wrap gap-x-6 gap-y-1">{round.allowedTime && <div><dt className="text-xs text-neutral-500">Tiempo permitido</dt><dd>{round.allowedTime}</dd></div>}{round.optimalTime && <div><dt className="text-xs text-neutral-500">Tiempo óptimo</dt><dd>{round.optimalTime}</dd></div>}</dl></div>)}
+  if (!details.definition && !details.height && !details.allowedTime && !details.optimalTime && !details.rounds?.length) return null;
+  const field = (label: string, value?: string) => value ? <div className="min-w-0"><dt className="block text-xs text-neutral-500">{label}</dt><dd className="block font-semibold break-words">{value}</dd></div> : null;
+  return <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-start gap-x-6 gap-y-3 text-sm text-neutral-700" aria-label="Condiciones de la prueba">
+    {(details.definition || details.height) && <dl className="grid grid-cols-2 gap-x-6 gap-y-3 w-full sm:w-auto sm:flex sm:flex-wrap">{field('Definición', details.definition)}{field('Altura', details.height)}</dl>}
+    {(details.allowedTime || details.optimalTime) && <dl className="grid grid-cols-2 gap-x-6 gap-y-3 w-full sm:w-auto sm:flex sm:flex-wrap">{field('Tiempo acordado', details.allowedTime)}{field('Tiempo óptimo', details.optimalTime)}</dl>}
+    {details.rounds?.map((round,i) => <div key={i} className="w-full sm:w-auto"><p className="font-semibold text-[#123E59]">{round.label}</p><dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:flex sm:flex-wrap">{field('Tiempo acordado', round.allowedTime)}{field('Tiempo óptimo', round.optimalTime)}</dl></div>)}
   </div>;
 }
 

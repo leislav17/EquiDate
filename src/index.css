@@ -49,6 +49,7 @@
 .results-table .result-metric-heading { padding: 8px 2px; text-align: center; vertical-align: middle; font-size: 10px; line-height: 1.2; overflow-wrap: anywhere; }
 .results-table .result-metric-cell { padding: 12px 2px; text-align: center; vertical-align: top; white-space: nowrap; font-weight: 500; }
 .results-table tbody td { border-bottom: 1px solid #e5e7eb; }
+.results-table tbody .result-category-start td { border-top: 3px solid #A61E4D; }
 .results-table tbody tr:last-child td { border-bottom: 0; }
 .results-table tbody tr:hover td { background-color: #f7fafc; }
 .results-table-shell [role="region"]:focus-visible { outline: 2px solid #123e5955; outline-offset: 2px; }

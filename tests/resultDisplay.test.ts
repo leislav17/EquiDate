@@ -4,6 +4,20 @@ import { resultColumnsForFormat, resultColumnsForPhases, type ResultEntry } from
 import { resultDisplayColumns, resultDisplayValue } from '../src/utils/resultDisplay.ts';
 
 const row = (values: Record<string,string>): ResultEntry => ({position:1,rider:'Ana',horse:'',values});
+test('Every template accepts undivided faults without inventing components', () => {
+  for (const format of ['single','optimum','two_phases','jump_off','two_rounds'] as const) {
+    const source = resultColumnsForFormat(format, false);
+    assert.ok(!source.some(c => /(?:obstacle|time)_faults$/.test(c.key)));
+    const values = Object.fromEntries(source.map(c => [c.key, c.key.endsWith('faults') ? '5' : '62,10']));
+    const cols = resultDisplayColumns(source);
+    assert.equal(resultDisplayValue(row(values),cols[0]),'5');
+    assert.ok(cols.every(c => !resultDisplayValue(row(values),c).includes('+')));
+    assert.equal(cols.filter(c=>c.label === 'Faltas').length, format === 'single' || format === 'optimum' ? 1 : 2);
+  }
+  const detailed = resultDisplayColumns(resultColumnsForFormat('single'));
+  assert.equal(resultDisplayValue(row({faults:'5'}),detailed[0]),'5');
+  assert.equal(resultDisplayValue(row({faults:'0'}),detailed[0]),'0');
+});
 test('Detailed phases collapse to faults and time without changing source marks', () => {
   const source = resultColumnsForFormat('two_phases');
   const original = structuredClone(source);

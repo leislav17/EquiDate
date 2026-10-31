@@ -8,11 +8,12 @@ export interface ResultDetails { definition?: string; height?: string; allowedTi
 export interface ResultVersion extends StartVersion { columns: ResultColumn[]; entries: ResultEntry[]; details?: ResultDetails }
 export interface ResultImport extends StartImport { columns: ResultColumn[]; entries: ResultEntry[]; details?: ResultDetails }
 export type ResultFormat = 'single' | 'optimum' | 'two_phases' | 'jump_off' | 'two_rounds';
-export function resultColumnsForFormat(format: ResultFormat): ResultColumn[] {
+export function resultColumnsForFormat(format: ResultFormat, detailedFaults = true): ResultColumn[] {
   const round = (prefix = '', group?: string): ResultColumn[] => [
     { key: prefix + 'obstacle_faults', label: 'Faltas obstáculos' }, { key: prefix + 'time_faults', label: 'Faltas tiempo' },
     { key: prefix + 'faults', label: 'Total faltas' }, { key: prefix + 'time', label: 'Tiempo' },
-  ].map(c => group ? { ...c, group } : c);
+  ].filter(c => detailedFaults || (!c.key.endsWith('obstacle_faults') && !c.key.endsWith('time_faults')))
+    .map(c => ({ ...c, ...(c.key.endsWith('faults') && !detailedFaults ? { label: 'Faltas' } : {}), ...(group ? { group } : {}) }));
   if (format === 'single') return round();
   if (format === 'optimum') return [...round(), { key: 'time_difference', label: 'Diferencia al óptimo' }];
   const labels = format === 'jump_off' ? ['Recorrido', 'Desempate'] : format === 'two_rounds' ? ['Recorrido 1', 'Recorrido 2'] : ['Fase 1', 'Fase 2'];

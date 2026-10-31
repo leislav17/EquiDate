@@ -8,6 +8,7 @@ export function ResultsManager({ eventId }: { eventId: string }) {
   const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, resultHeads, resultVersions, resultsError, importResults, unpublishResults } = useEquestrian();
   const [text, setText] = useState('');
   const [format, setFormat] = useState<ResultFormat>('single');
+  const [detailedFaults, setDetailedFaults] = useState(true);
   const [preview, setPreview] = useState<ResultImport[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,7 +34,7 @@ export function ResultsManager({ eventId }: { eventId: string }) {
   function exportTemplate() {
     const template = targets.map(c => ({ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number,
       expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null,
-      columns: resultColumnsForFormat(format), details: { definition: '', height: '', allowedTime: '', optimalTime: '', rounds: [] }, sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original. Omitir columnas del campeonato. Verificar puestos rojos y tiempos de referencia.'], entries: [] }));
+      columns: resultColumnsForFormat(format, detailedFaults), details: { definition: '', height: '', allowedTime: '', optimalTime: '', rounds: [] }, sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original. Omitir columnas del campeonato. Verificar puestos rojos y tiempos de referencia.'], entries: [] }));
     const url = URL.createObjectURL(new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `pruebas-${eventId}.json`; link.click(); URL.revokeObjectURL(url);
   }
@@ -79,7 +80,8 @@ export function ResultsManager({ eventId }: { eventId: string }) {
       {history.map(v => <div key={v.id} className="flex flex-wrap gap-2 justify-between text-sm"><span>{new Date(v.created_at).toLocaleString('es-AR')} · {v.entries.length} participantes · {v.source_name}</span><button disabled={busy} className="underline min-h-11 text-[#123E59]" onClick={() => { const c = targets.find(c => c.id === v.class_id)!; changeText(JSON.stringify([{ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null, sourceName: v.source_name, columns: v.columns, details: v.details ?? {}, reviewed: true, uncertainties: [], entries: v.entries }], null, 2)); }}>Preparar restauración</button></div>)}
     </div>}
     <label className="block text-sm font-semibold">Formato de la plantilla<select className="block min-h-11 mt-2 rounded-lg border border-neutral-300 px-3 bg-white max-w-full" value={format} disabled={busy} onChange={e => setFormat(e.target.value as ResultFormat)}><option value="single">Un recorrido · Faltas y tiempo</option><option value="optimum">Tiempo óptimo · Faltas, tiempo y diferencia</option><option value="two_phases">Dos fases · Desglose de faltas y tiempos</option><option value="jump_off">Recorrido y desempate</option><option value="two_rounds">Doble recorrido</option></select></label>
-    <p className="text-sm text-neutral-500">La plantilla propone ese formato. Cada prueba debe conservar las fases y valores que figuren en su resultado original; los datos faltantes quedan en blanco.</p>
+    <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={detailedFaults} disabled={busy} onChange={e => setDetailedFaults(e.target.checked)} />El documento separa faltas de obstáculos y de tiempo</label>
+    <p className="text-sm text-neutral-500">Si no separa las faltas, desmarcá la opción: se mostrará el número informado, sin paréntesis ni suma. Cada prueba conserva las fases y valores de su documento; los datos faltantes quedan en blanco.</p>
     <button className="min-h-11 underline text-[#123E59] font-semibold" onClick={exportTemplate} disabled={!targets.length || busy}>Descargar plantilla de pruebas para ChatGPT</button>
     <label className="block text-sm font-semibold">Lote revisado (JSON)<textarea className="block w-full min-h-48 mt-2 rounded-lg border border-neutral-300 p-3 text-xs font-mono" value={text} disabled={busy} onChange={e => changeText(e.target.value)} placeholder="Pegá el lote extraído y revisado con ChatGPT" /></label>
     <label className="block text-sm">O seleccioná el archivo JSON<input type="file" accept=".json,application/json" disabled={busy} className="block max-w-full my-2" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 10 * 1024 * 1024) { setMessage('El lote supera 10 MB.'); return; } changeText(await file.text()); e.target.value = ''; }} /></label>

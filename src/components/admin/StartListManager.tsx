@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
-import { StartImport, StartVersion, publishedStartList, reviewStartImport } from '../../utils/startLists';
+import { StartImport, StartVersion, publishedStartList, reviewStartImport, startPdf } from '../../utils/startLists';
 import { StartListRows } from '../public/StartListView';
 
 export function StartListManager({ eventId }: { eventId: string }) {
-  const { classes, arenas, startHeads, startVersions, startListsError, importStartLists, unpublishStartList } = useEquestrian();
+  const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, startHeads, startVersions, startListsError, importStartLists, unpublishStartList } = useEquestrian();
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<StartImport[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -40,13 +40,31 @@ export function StartListManager({ eventId }: { eventId: string }) {
     <h2 className="text-xl font-bold text-[#123E59]">Órdenes de ingreso</h2>
     <p className="text-sm text-neutral-600">Pasá el PDF y la plantilla de pruebas por ChatGPT. Revisá la extracción y resolvé los datos inciertos antes de importar el lote. No hace falta cargar los participantes uno por uno.</p>
     <p className="text-sm text-neutral-600">La cantidad pública será automática mientras haya un listado publicado. La cantidad manual de la prueba se conserva. Cada reemplazo guarda una versión anterior y no modifica ningún PDF.</p>
+    <p className="text-sm text-neutral-600">También podés agregar un PDF por prueba. Si hay listado estructurado, el PDF queda disponible para descargar; si solo hay PDF, se abre como siempre.</p>
     {startListsError && <p role="alert" className="text-red-700">{startListsError}</p>}
     <div className="divide-y divide-neutral-100">{targets.map(c => {
       const list = publishedStartList(c.id, startHeads, startVersions);
       const head = startHeads.find(h => h.class_id === c.id);
+      const pdf = startPdf(documents, c.id);
       return <div key={c.id} className="py-3 flex flex-wrap justify-between gap-2 text-sm">
         <div className="min-w-0 break-words"><p className="font-semibold">{label(c.id)}</p><p className="text-neutral-500">{list ? `${list.entries.length} participantes · ${list.source_name}` : 'Sin listado estructurado publicado'} · Manual: {c.participantCount ?? 'sin definir'}</p></div>
         <div className="flex flex-wrap gap-3">
+          <label className={`relative inline-flex items-center min-h-11 text-[#123E59] underline rounded focus-within:ring-2 focus-within:ring-[#123E59] ${busy ? 'opacity-50' : 'cursor-pointer'}`}>
+            {pdf ? 'Reemplazar PDF' : 'Agregar PDF'}
+            <input type="file" accept=".pdf,application/pdf" aria-label={`${pdf ? 'Reemplazar' : 'Agregar'} PDF de Prueba ${c.number}`} disabled={busy} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default" onChange={e => {
+              const file = e.target.files?.[0]; e.target.value = '';
+              if (!file) return;
+              if (!file.name.toLowerCase().endsWith('.pdf') && file.type.toLowerCase() !== 'application/pdf') { setMessage('Seleccioná un archivo PDF.'); return; }
+              if (!file.size || file.size > 25 * 1024 * 1024) { setMessage('El PDF debe tener contenido y pesar hasta 25 MB.'); return; }
+              if (pdf && !window.confirm(`¿Reemplazar el PDF de Prueba ${c.number}? El listado estructurado no se modifica.`)) return;
+              void run(async () => {
+                if (pdf) await updateDocument(pdf.id, { mimeType: 'application/pdf' }, file);
+                else await addDocument({ eventId, classId: c.id, eventDate: c.date, name: `Listado Prueba ${c.number}`, type: 'START_LIST', fileUrl: '', mimeType: 'application/pdf' }, file);
+                setMessage(`PDF de Prueba ${c.number} guardado. El listado estructurado se conserva.`);
+              });
+            }} />
+          </label>
+          {pdf && <button disabled={busy} className="min-h-11 underline text-[#123E59]" onClick={() => setViewingDocumentId(pdf.id)}>Ver PDF</button>}
           <button disabled={busy || !!startListsError} className="min-h-11 underline text-[#123E59] disabled:opacity-50" onClick={() => void run(() => loadHistory(c.id))}>Versiones</button>
           {list && head && <button disabled={busy} className="min-h-11 underline text-red-700" onClick={() => {
             if (window.confirm(`¿Retirar el listado de Prueba ${c.number}? Se conservarán las versiones y volverá a mostrarse el documento anterior si existe.`)) void run(async () => { await unpublishStartList(c.id, head.revision); setPreview(null); setConfirmed(false); setMessage('Listado retirado. Versiones conservadas.'); });

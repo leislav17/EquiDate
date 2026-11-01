@@ -10,7 +10,7 @@ compilación rechaza una URL distinta. La clave pública debe pertenecer tambié
 
 ## Slugs
 
-Aplicar `supabase/migrations/20261101000204_event_slugs.sql` antes del despliegue del
+Aplicar `supabase/migrations/20261101000804_event_slugs.sql` antes del despliegue del
 frontend en el entorno elegido. Agrega `events.slug`, una restricción única y una
 validación de formato y palabras reservadas. No cambia RLS ni asociaciones. Conserva
 las fechas de modificación originales de los concursos existentes.

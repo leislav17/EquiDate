@@ -26,7 +26,7 @@ test('Slug migration preserves existing rows, creates unique stable URLs and kee
         ('Polo Jumping Tour - San Diego','Club','2027-10-30','2027-11-01','2020-01-01');
     `);
     const before = (await db.query<Record<string, unknown>>('select * from events order by id')).rows;
-    await db.exec(await readFile(new URL('../supabase/migrations/20261101000204_event_slugs.sql', import.meta.url), 'utf8'));
+    await db.exec(await readFile(new URL('../supabase/migrations/20261101000804_event_slugs.sql', import.meta.url), 'utf8'));
     const after = (await db.query<{ id: string; slug: string }>('select * from events order by id')).rows;
     assert.deepEqual(after.map(({ slug, ...row }) => row), before);
     assert.deepEqual(new Set(after.map(row => row.slug)), new Set(['san-diego', 'san-diego-2', 'sjv', 'sjv-preliminar', 'sjv-pasadas-preliminar']));

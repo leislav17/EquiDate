@@ -14,6 +14,7 @@ export function eventPath(event: Pick<RoutableEvent, 'id' | 'slug'>): string {
 
 export function eventReference(location: RouteLocation): string | null {
   if (isAdminRoute(location)) return null;
+  if (location.pathname.replace(/\/+$/, '') === '/buscar/jinetes') return null;
   let path: string;
   try { path = decodeURIComponent(location.pathname).replace(/\/+$/, ''); } catch { return '!invalid'; }
   const legacy = path.match(/^\/(?:events?|concursos?)\/([^/]+)$/i);

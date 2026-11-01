@@ -115,9 +115,6 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
                     {arena.name}
                   </h4>
                 </div>
-                <span className="text-xs text-neutral-500 font-medium">
-                  {arenaClasses.length} {arenaClasses.length === 1 ? 'prueba' : 'pruebas'}
-                </span>
               </div>
             )}
             <div className="space-y-3">

@@ -64,7 +64,7 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
       </div>
     </div> : <p className="px-4 pt-6">Transmisión aún no disponible.</p>}
     <div className="px-4 py-6 lg:col-start-1 lg:row-start-2 min-w-0">
-    <button onClick={() => { setSelectedEventId(day.eventId); setActiveView('public'); window.location.hash = ''; }}
+    <button onClick={() => { setSelectedEventId(day.eventId); setActiveView('public'); }}
       className="flex items-center gap-2 min-h-11 text-sm font-bold text-[#123E59] mb-4">
       <ArrowLeft className="w-4 h-4" />Volver al concurso
     </button>

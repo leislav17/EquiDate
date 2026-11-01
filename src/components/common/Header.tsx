@@ -5,7 +5,6 @@ import { ArrowLeft } from 'lucide-react';
 export const Header: React.FC = () => {
   const { activeView, setActiveView, setSelectedEventId } = useEquestrian();
   const home = () => {
-    window.location.hash = '';
     setSelectedEventId(null);
     setActiveView('public');
   };

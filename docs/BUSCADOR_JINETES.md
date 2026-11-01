@@ -10,6 +10,10 @@ Las actuaciones reutilizan el componente de resultados existente, conservando fa
 
 ## Correcciones administrativas
 
+La pantalla muestra **Posibles coincidencias** desde el inicio, sin exigir búsqueda: compara nombres completos normalizados, admite una diferencia de escritura en una palabra de al menos cuatro letras y prioriza club/caballo coincidentes. No propone asociaciones por compartir solamente el nombre o el apellido ni vuelve a proponer dos identidades confirmadas distintas. Son indicios para revisión, no porcentajes de probabilidad ni fusiones automáticas.
+
+“Revisar asociación” selecciona todos los registros de los dos grupos, incluidos los caballos de una identidad ya confirmada, y lleva al detalle para confirmar o desmarcar filas. Al guardar, el buscador público presenta una sola persona con sus distintos caballos. Las actuaciones siguen vinculándose por prueba y binomio. El filtro por nombre permite acotar sugerencias y se conserva la selección manual.
+
 Desde el menú de una sesión admin, **Asociaciones de jinetes** (`/admin/jinetes`). Buscar y marcar registros (se pueden conservar selecciones entre búsquedas), informar el motivo y guardar. La selección recibe una identidad interna común. Para separar una persona de un grupo, seleccionar solo sus registros y guardar una nueva asociación. “Restaurar agrupación provisional” elimina las correcciones seleccionadas. Incluir los registros de orden y resultado de la persona cuando corresponda.
 
 Las correcciones referencian tipo, versión inmutable y posición de la fila. Una nueva importación requiere revisar las asociaciones; no se trasladan por posición a otro PDF. La migración `20261101004723_rider_associations.sql` agrega solo la tabla de correcciones. RLS permite leer correcciones de versiones actualmente publicadas en concursos publicados y escribir solo con `app_metadata.equidate_admin`. No se utilizan claves privilegiadas en el cliente. Si falla la lectura de correcciones, se bloquea la consulta y se ofrece reintentar para no mostrar asociaciones potencialmente erróneas.

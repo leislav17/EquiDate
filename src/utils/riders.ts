@@ -13,6 +13,22 @@ const knownHorse = (horse: string) => !!normalizeRider(horse) && !/^(?:[-–—?
 /** Only current published pointers and public events enter the public directory, even in an admin session. */
 export function riderDirectory(events: EquestrianEvent[], classes: CompetitionClass[], startHeads: StartHead[], startVersions: StartVersion[], resultHeads: StartHead[], resultVersions: ResultVersion[], associations: RiderAssociation[] = []): RiderCandidate[] {
   const overrides = new Map(associations.map(a => [a.source, a.identity]));
+  const parents = new Map<string, string>();
+  const root = (key: string): string => {
+    const parent = parents.get(key);
+    if (!parent || parent === key) return key;
+    const result = root(parent); parents.set(key, result); return result;
+  };
+  // Existing corrections can join spelling variants, but never split an exact full name.
+  for (const entry of classes) {
+    if (!events.some(e => e.id === entry.eventId && e.status === 'published')) continue;
+    [publishedStartList(entry.id, startHeads, startVersions), publishedResults(entry.id, resultHeads, resultVersions)].forEach((version, index) => {
+      for (const row of version?.entries || []) {
+        const manual = overrides.get(`${index === 0 ? 'start' : 'result'}:${version!.id}:${row.position}`);
+        if (manual) parents.set(root('name:' + normalizeRider(row.rider)), root('manual:' + manual));
+      }
+    });
+  }
   const groups = new Map<string, RiderCandidate>();
   for (const entry of classes) {
     if (!events.some(e => e.id === entry.eventId && e.status === 'published')) continue;
@@ -22,7 +38,7 @@ export function riderDirectory(events: EquestrianEvent[], classes: CompetitionCl
       const kind = index === 0 ? 'start' : 'result';
       for (const row of version.entries) {
         const source = `${kind}:${version.id}:${row.position}`;
-        const identity = overrides.has(source) ? 'manual:' + overrides.get(source) : knownHorse(row.horse) ? 'pair:' + pair(row) : 'unknown:' + source;
+        const identity = root('name:' + normalizeRider(row.rider));
         const group = groups.get(identity) || { id: identity, name: row.rider, horses: [], clubs: [], records: [] };
         if (row.horse && !group.horses.includes(row.horse)) group.horses.push(row.horse);
         if (row.club && !group.clubs.includes(row.club)) group.clubs.push(row.club);
@@ -86,7 +102,7 @@ export function riderParticipations(candidate: RiderCandidate): Participation[] 
   const rows: Participation[] = starts.map(start => {
     const matching = results.filter(r => samePair(start, r));
     const unique = matching.length === 1 && starts.filter(s => samePair(s, matching[0])).length === 1;
-    const result = unique && (!start.row.category || !matching[0].row.category || normalizeRider(start.row.category) === normalizeRider(matching[0].row.category)) ? matching[0] : undefined;
+    const result = unique ? matching[0] : undefined;
     if (result) used.add(result.source);
     return { id: start.source, classId: start.classId, start, result };
   });

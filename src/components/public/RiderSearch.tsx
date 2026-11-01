@@ -60,7 +60,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
         <p role="status">{matches.length ? `${matches.length} coincidencias. Seleccioná el jinete correcto.` : 'No hay coincidencias en los datos publicados.'}</p>
         <ul className="mt-4 space-y-3">{matches.map(c => <li key={c.id}><button onClick={() => setSelected(c.id)} className="text-left w-full rounded-xl border border-neutral-200 bg-white p-4 hover:border-[#123E59] min-h-16"><span className="block font-bold text-[#123E59]">{c.name}</span><span className="block text-sm mt-1">{c.horses.join(' · ') || 'Caballo no informado'}</span><span className="block text-sm text-neutral-500">{c.clubs.join(' · ') || 'Club no informado'}</span></button></li>)}</ul>
       </div> : <div className="mt-6">
-        <button onClick={() => setSelected(null)} className="underline min-h-11 text-[#123E59]">Volver a coincidencias</button>
+        <button onClick={() => setSelected(null)} className="underline min-h-11 text-[#123E59]">Volver al buscador</button>
         <h2 className="text-xl font-bold text-[#123E59]">{candidate.name}</h2>
         {events.map(event => <details key={`${candidate.id}:${event.id}`} className="group/contest mt-6 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-6">
           <summary className="flex items-center justify-between gap-3 min-h-11 cursor-pointer list-none [&::-webkit-details-marker]:hidden">

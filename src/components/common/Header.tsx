@@ -37,12 +37,18 @@ export const Header: React.FC = () => {
       </button>}
     </div>
     <dialog id="main-menu" ref={dialog} aria-labelledby="menu-title" onCancel={() => setOpen(false)} onClose={() => setOpen(false)} onClick={e => { if (e.target === dialog.current) setOpen(false); }} className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-black/40 p-0 backdrop:bg-transparent text-neutral-900">
-      <div className="h-full w-[min(85vw,340px)] bg-white p-5 shadow-xl">
-        <div className="flex justify-between items-center"><h2 id="menu-title" className="font-bold text-xl text-[#123E59]">EquiDate</h2><button aria-label="Cerrar menú" onClick={() => setOpen(false)} className="min-h-11 min-w-11 flex items-center justify-center"><X /></button></div>
+      <div className="h-full w-[min(85vw,340px)] bg-[#123E59] text-white p-5 shadow-xl">
+        <div className="relative flex justify-center items-center pb-5 border-b-2 border-[#A61E4D]">
+          <h2 id="menu-title" className="sr-only">Menú de EquiDate</h2>
+          <svg viewBox="630 761 4075 3618" className="w-20 h-20" role="img" aria-label="EquiDate">
+            <image href="/equidate-symbol.png" width="5225" height="5225" />
+          </svg>
+          <button aria-label="Cerrar menú" onClick={() => setOpen(false)} className="absolute right-0 top-0 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10"><X /></button>
+        </div>
         <nav aria-label="Menú principal" className="mt-6 flex flex-col gap-2">
-          <button onClick={() => go('/')} className="text-left min-h-12 rounded-lg px-3 hover:bg-neutral-100">Calendario</button>
-          <button onClick={() => go('/buscar/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-neutral-100">Buscar jinetes</button>
-          {isAdmin && <button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-neutral-100">Asociaciones de jinetes</button>}
+          <button onClick={() => go('/')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Inicio</button>
+          <button onClick={() => go('/buscar/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Buscar jinetes</button>
+          {isAdmin && <button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button>}
         </nav>
       </div>
     </dialog>

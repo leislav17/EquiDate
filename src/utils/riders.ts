@@ -40,6 +40,43 @@ export function searchRiders(directory: RiderCandidate[], query: string): RiderC
   return directory.filter(candidate => candidate.records.some(r => words.every(word => normalizeRider(r.row.rider).includes(word))));
 }
 
+export interface RiderSuggestion { id: string; candidates: RiderCandidate[]; reasons: string[]; priority: number }
+const nameWords = (name: string) => normalizeRider(name).replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).sort();
+function oneEdit(a: string, b: string): boolean {
+  if (Math.min(a.length, b.length) < 4 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length >= b.length) i++;
+    if (b.length >= a.length) j++;
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+/** Review hints only. Never change identity or infer a numerical probability from PDF names. */
+export function suggestRiderAssociations(directory: RiderCandidate[]): RiderSuggestion[] {
+  const suggestions: RiderSuggestion[] = [];
+  const names = new Map(directory.map(c => [c.id, [...new Set(c.records.map(r => r.row.rider))].map(nameWords)]));
+  for (let i = 0; i < directory.length; i++) for (let j = i + 1; j < directory.length; j++) {
+    const a = directory[i], b = directory[j];
+    // Explicitly separated people must not be proposed for automatic re-merging.
+    if (a.id.startsWith('manual:') && b.id.startsWith('manual:')) continue;
+    let exact = false, similar = false;
+    for (const aw of names.get(a.id)!) for (const bw of names.get(b.id)!) {
+      if (aw.length < 2 || aw.length !== bw.length) continue;
+      const differences = aw.map((word, index) => [word, bw[index]]).filter(([x,y]) => x !== y);
+      if (!differences.length) exact = true;
+      else if (differences.length === 1 && oneEdit(differences[0][0], differences[0][1])) similar = true;
+    }
+    if (!exact && !similar) continue;
+    const shared = (xs: string[], ys: string[]) => xs.some(x => normalizeRider(x) && ys.some(y => normalizeRider(x) === normalizeRider(y)));
+    const sameClub = shared(a.clubs, b.clubs);
+    const sameHorse = shared(a.horses.filter(knownHorse), b.horses.filter(knownHorse));
+    suggestions.push({ id: JSON.stringify([a.id,b.id]), candidates: [a,b], priority: (exact ? 4 : 0) + (sameClub ? 2 : 0) + (sameHorse ? 1 : 0), reasons: [exact ? 'Mismo nombre completo' : 'Nombre completo con una diferencia de escritura', ...(sameClub ? ['Club coincidente'] : []), ...(sameHorse ? ['Caballo coincidente'] : [])] });
+  }
+  return suggestions.sort((a,b) => b.priority - a.priority || a.candidates[0].name.localeCompare(b.candidates[0].name, 'es') || a.id.localeCompare(b.id));
+}
+
 /** A manual identity association never implies that two entries are the same performance. */
 export function riderParticipations(candidate: RiderCandidate): Participation[] {
   const starts = candidate.records.filter(r => r.kind === 'start');

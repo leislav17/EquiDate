@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { riderDirectory, searchRiders, riderParticipations } from '../src/utils/riders.ts';
+import { riderDirectory, searchRiders, riderParticipations, suggestRiderAssociations } from '../src/utils/riders.ts';
 import type { CompetitionClass, EquestrianEvent } from '../src/types/equestrian.ts';
 import type { StartEntry, StartVersion } from '../src/utils/startLists.ts';
 const events = [{ id: 'e', status: 'published' }, { id: 'draft', status: 'draft' }] as EquestrianEvent[];
@@ -43,4 +43,30 @@ test('Manual identity overrides can split rows without changing source and do no
   assert.equal(merged.length, 1); assert.equal(riderParticipations(merged[0]).length, 2);
   assert.equal(build([{ source: 'start:s:1', identity: 'person' }]).length, 2);
   assert.equal(starts[0].entries[0].horse, 'Relámpago');
+});
+
+test('Admin suggests matching full names with different horses, ranks shared club first, and never merges', () => {
+  const groups = directory([row(), row('Centauro', 'MARTINA FERNANDEZ', 2), { ...row('Dama', 'Martina Fernandez', 3), club: 'Club C' }], []);
+  const suggestions = suggestRiderAssociations(groups);
+  assert.equal(suggestions.length, 3);
+  assert.ok(suggestions[0].reasons.includes('Club coincidente'));
+  assert.ok(suggestions.every(s => s.reasons.includes('Mismo nombre completo')));
+  assert.equal(groups.length, 3);
+  assert.equal(searchRiders(groups, 'Martina').length, 3);
+});
+
+test('Suggestions handle a small spelling difference but reject first-name or surname-only matches', () => {
+  const groups = directory([row(), row('Centauro', 'Martina Fernande', 2), row('Dama', 'Martina Lopez', 3), row('Sol', 'Ana Fernandez', 4), row('Luna', 'Martina', 5)], []);
+  const suggestions = suggestRiderAssociations(groups);
+  assert.equal(suggestions.length, 1);
+  assert.ok(suggestions[0].reasons.includes('Nombre completo con una diferencia de escritura'));
+});
+
+test('Confirmed identities are not suggested against each other; adding another horse preserves all existing rows', () => {
+  const groups = directory([row(), row('Centauro', 'Martina Fernandez', 2), row('Sol', 'Martina Fernandez', 3)], []);
+  groups[0].id = 'manual:one'; groups[1].id = 'manual:two';
+  const suggestions = suggestRiderAssociations(groups);
+  assert.equal(suggestions.length, 2);
+  assert.ok(suggestions.every(s => s.candidates.some(c => c.id.startsWith('pair:'))));
+  assert.equal(suggestRiderAssociations([groups[0]]).length, 0);
 });

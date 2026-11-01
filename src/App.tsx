@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { TransmissionPage } from './components/public/Transmission';
 import { EquestrianProvider, useEquestrian } from './context/EquestrianContext';
 import { Header } from './components/common/Header';
@@ -9,10 +9,20 @@ import { AdminLogin } from './components/admin/AdminLogin';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
 import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
+import { RiderSearch } from './components/public/RiderSearch';
+import { trackPage } from './lib/analytics';
+import { eventPath, resourceHash, resourceSuffix } from './utils/navigation';
 
 const AppContent: React.FC = () => {
   const {
     activeView,
+    events,
+    documents,
+    classes,
+    days,
+    routeNotFound,
+    routeLocation,
+    setSelectedEventId,
     selectedEventId,
     viewingDocumentId,
     isAdmin,
@@ -22,15 +32,29 @@ const AppContent: React.FC = () => {
     refreshData
   } = useEquestrian();
 
-  const [hash, setHash] = useState(window.location.hash);
-  useEffect(() => {
-    const onHash = () => setHash(window.location.hash);
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  const hash = resourceHash(routeLocation);
+  const riderSearch = routeLocation.pathname.replace(/\/+$/, '') === '/buscar/jinetes';
+  const riderAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/jinetes';
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
   const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
   const resultsId = hash.startsWith('#results/') ? hash.slice(9) : null;
+
+  useEffect(() => {
+    // Wait for the route to resolve; loading/auth refreshes are not pageviews.
+    if (isLoading || dataError || isAuthLoading || activeView === 'admin') return;
+    const entry = classes.find(entry => entry.id === (startListId || resultsId));
+    const doc = documents.find(doc => doc.id === viewingDocumentId);
+    const day = days.find(day => day.id === transmissionId?.split('/')[0]);
+    const event = events.find(event => event.id === (entry?.eventId || doc?.eventId || day?.eventId || selectedEventId));
+    if (event?.slug && (routeLocation.pathname !== eventPath(event) + resourceSuffix(hash) ||
+      routeLocation.hash || new URLSearchParams(routeLocation.search).has('event'))) return;
+    const screen = riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
+      : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
+      : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : 'Concursos';
+    const title = event ? `${screen === 'Concursos' ? '' : screen + ' · '}${event.name} · EquiDate` : `${screen} · EquiDate`;
+    document.title = title;
+    trackPage(window.location.href);
+  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch]);
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -49,7 +73,7 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {resultsId ? (
+        {riderSearch ? <RiderSearch /> : resultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>
             : dataError ? null : <ResultsView key={resultsId} classId={resultsId} />
         ) : startListId ? (
@@ -64,14 +88,20 @@ const AppContent: React.FC = () => {
               <span>Verificando acceso…</span>
             </div>
           ) : isAdmin ? (
-            <AdminDashboard />
+            riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
           ) : (
             <AdminLogin />
           )
         ) : isLoading ? (
           <p role="status" className="p-8 text-center">Cargando concursos…</p>
         ) : dataError ? null : selectedEventId ? (
-          <CompetitionDetail />
+          <CompetitionDetail key={selectedEventId} />
+        ) : routeNotFound ? (
+          <section className="max-w-4xl mx-auto px-4 py-12 text-center">
+            <h1 className="text-xl font-bold text-[#123E59]">Concurso no encontrado</h1>
+            <p className="my-4 text-neutral-600">Este enlace no corresponde a un concurso disponible.</p>
+            <button onClick={() => setSelectedEventId(null)} className="min-h-11 px-4 bg-[#123E59] text-white rounded-lg">Volver a Concursos</button>
+          </section>
         ) : (
           <CompetitionList />
         )}

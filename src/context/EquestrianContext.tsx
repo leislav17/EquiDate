@@ -7,6 +7,7 @@ import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
 import { getArgentinaDate } from '../utils/dateUtils';
 import { StartHead, StartVersion, StartImport, reviewStartImport } from '../utils/startLists';
 import { ResultVersion, ResultImport, reviewResultImport } from '../utils/results';
+import { eventPath, eventReference, isAdminRoute, navigate, navigateHash, readLocation, resolveEvent, resourceHash, resourceSuffix, subscribeNavigation } from '../utils/navigation';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -16,6 +17,8 @@ export interface DocumentPageInput {
 }
 
 interface EquestrianContextType {
+  routeNotFound: boolean;
+  routeLocation: ReturnType<typeof readLocation>;
   resultHeads: StartHead[];
   resultVersions: ResultVersion[];
   resultsError: string | null;
@@ -120,7 +123,29 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [activeYear, setActiveYear] = useState(() => getArgentinaDate().year);
   const [selectedMonth, setSelectedMonth] = useState<number>(-2);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [routeLocation, setRouteLocation] = useState(readLocation);
+  useEffect(() => subscribeNavigation(() => setRouteLocation(readLocation())), []);
+  const selectedEventId = resolveEvent(routeLocation, events, false)?.id || null;
+  const routeNotFound = !isAdminRoute(routeLocation) && Boolean(eventReference(routeLocation)) && !selectedEventId;
+  const setSelectedEventId = useCallback((id: string | null) => {
+    const event = events.find(event => event.id === id);
+    navigate(event ? eventPath(event) : '/');
+    window.scrollTo(0, 0);
+  }, [events]);
+  useEffect(() => {
+    if (isAdminRoute(routeLocation)) return;
+    const resource = resourceHash(routeLocation);
+    const ownerId = resource.startsWith('#document-') ? documents.find(doc => doc.id === resource.slice(10))?.eventId
+      : resource.startsWith('#start-list/') ? classes.find(entry => entry.id === resource.slice(12))?.eventId
+      : resource.startsWith('#results/') ? classes.find(entry => entry.id === resource.slice(9))?.eventId
+      : resource.startsWith('#transmission/') ? days.find(day => day.id === resource.slice(14).split('/')[0])?.eventId : null;
+    const event = ownerId ? events.find(event => event.id === ownerId && event.status === 'published') : resolveEvent(routeLocation, events);
+    if (!event?.slug || (resource && !ownerId)) return;
+    const search = new URLSearchParams(routeLocation.search);
+    search.delete('event');
+    const query = search.toString();
+    navigate(eventPath(event) + resourceSuffix(resource) + (query ? '?' + query : ''), true);
+  }, [events, documents, classes, days, routeLocation]);
   const isCurrentRouteAdmin = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
     const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
@@ -165,9 +190,9 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hash.startsWith('#admin/');
 
       if (view === 'admin' && !isAdminRoute) {
-        window.history.pushState({}, '', '/admin');
+        navigate('/admin');
       } else if (view === 'public' && isAdminRoute) {
-        window.history.pushState({}, '', '/');
+        navigate('/');
       }
     }
   }, []);
@@ -182,12 +207,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     };
 
-    window.addEventListener('popstate', handleLocationChange);
-    window.addEventListener('hashchange', handleLocationChange);
-    return () => {
-      window.removeEventListener('popstate', handleLocationChange);
-      window.removeEventListener('hashchange', handleLocationChange);
-    };
+    return subscribeNavigation(handleLocationChange);
   }, [isCurrentRouteAdmin]);
 
   const [activeViewerDoc, setActiveViewerDoc] = useState<DocumentItem | null>(null);
@@ -200,19 +220,25 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const isBackendConnected = isSupabaseConfigured();
   const isAdmin = isBackendConnected && session?.user.app_metadata?.equidate_admin === true;
   const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
-    () => window.location.hash.startsWith('#document-') ? window.location.hash.slice(10) : null
+    () => resourceHash(readLocation()).startsWith('#document-') ? resourceHash(readLocation()).slice(10) : null
   );
   const setViewingDocumentId = (id: string | null) => {
     setViewingDocumentIdState(id);
     if (id) {
-      if (!window.location.hash.startsWith('#document-')) previousDocumentRoute.current = window.location.hash;
-      window.location.hash = 'document-' + id;
-    } else if (window.location.hash.startsWith('#document-')) window.location.hash = previousDocumentRoute.current;
+      if (!resourceHash(readLocation()).startsWith('#document-')) previousDocumentRoute.current = window.location.pathname + window.location.search + window.location.hash;
+      navigateHash('document-' + id);
+    } else if (resourceHash(readLocation()).startsWith('#document-')) {
+      if (previousDocumentRoute.current) navigate(previousDocumentRoute.current);
+      else {
+        const doc = documents.find(doc => doc.id === viewingDocumentId);
+        const parent = events.find(event => event.id === doc?.eventId);
+        navigate(parent ? eventPath(parent) : '/');
+      }
+    }
   };
   useEffect(() => {
-    const onHash = () => setViewingDocumentIdState(window.location.hash.startsWith('#document-') ? window.location.hash.slice(10) : null);
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    const onHash = () => { const resource = resourceHash(readLocation()); setViewingDocumentIdState(resource.startsWith('#document-') ? resource.slice(10) : null); };
+    return subscribeNavigation(onHash);
   }, []);
   useEffect(() => {
     if (!isBackendConnected) {
@@ -261,6 +287,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (dbEvents) {
         const mappedEvents: EquestrianEvent[] = dbEvents.map((e) => ({
           id: String(e.id),
+          slug: e.slug || undefined,
           name: e.name,
           venue: e.venue,
           location: e.location || '',
@@ -446,6 +473,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const payload: Record<string, unknown> = {};
     const fields = {
       name: 'name',
+      slug: 'slug',
       venue: 'venue',
       startDate: 'start_date',
       endDate: 'end_date',
@@ -1008,6 +1036,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     resultHeads, resultVersions, resultsError, importResults, unpublishResults,
     startHeads, startVersions, startListsError, importStartLists, unpublishStartList,
     events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
+    routeNotFound, routeLocation,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
     activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,

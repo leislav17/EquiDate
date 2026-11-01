@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { AdminCompetitionList } from './AdminCompetitionList';
 import { AdminEventEditor } from './AdminEventEditor';
+import { navigate } from '../../utils/navigation';
 
 export const AdminDashboard: React.FC = () => {
   const { isLoading } = useEquestrian();
@@ -38,21 +39,21 @@ export const AdminDashboard: React.FC = () => {
   const handleSelectEvent = (eventId: string) => {
     setCurrentEventId(eventId);
     if (typeof window !== 'undefined') {
-      window.history.pushState({ event: eventId }, '', `/admin?event=${encodeURIComponent(eventId)}`);
+      navigate(`/admin?event=${encodeURIComponent(eventId)}`);
     }
   };
 
   const handleNewEvent = () => {
     setCurrentEventId('new');
     if (typeof window !== 'undefined') {
-      window.history.pushState({ event: 'new' }, '', '/admin?event=new');
+      navigate('/admin?event=new');
     }
   };
 
   const handleBackToList = () => {
     setCurrentEventId(null);
     if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/admin');
+      navigate('/admin');
     }
   };
 

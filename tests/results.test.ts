@@ -140,5 +140,27 @@ test('Result publication is atomic, admin-only, independent of start lists, and 
       await assert.rejects(save([{...detailed,details:{...detailed.details,optimalTime:'63'}}]));
     });
   });
+  await t.test('Rider corrections preserve sources, enforce admin writes and hide unpublished rows', async () => {
+    await db.exec(await readFile(new URL('../supabase/migrations/20261101004723_rider_associations.sql', import.meta.url), 'utf8'));
+    const version = (await db.query<{id:string}>('SELECT version_id AS id FROM result_lists WHERE class_id=$1',[c2])).rows[0].id;
+    const privateVersion = (await db.query<{id:string}>('SELECT version_id AS id FROM result_lists WHERE class_id=$1',[privateClass])).rows[0].id;
+    const source = `result:${version}:1`, hidden = `result:${privateVersion}:1`, identity = randomUUID();
+    await asRole('authenticated',admin,async () => {
+      await db.query('INSERT INTO rider_associations VALUES($1,$2,$3),($4,$2,$3)',[source,identity,'Revisión manual',hidden]);
+    });
+    for (const role of ['anon','authenticated']) await asRole(role,{user_metadata:{equidate_admin:true}},async () => {
+      assert.equal((await db.query('SELECT * FROM rider_associations')).rows.length,1);
+      await assert.rejects(db.query('INSERT INTO rider_associations VALUES($1,$2,$3)',[`result:${version}:2`,identity,'Sin permiso']));
+      if (role === 'authenticated') {
+        assert.equal((await db.query("UPDATE rider_associations SET reason='Hack' RETURNING source")).rows.length,0);
+        assert.equal((await db.query('DELETE FROM rider_associations RETURNING source')).rows.length,0);
+      }
+    });
+    await asRole('authenticated',admin,async () => {
+      await db.query('UPDATE result_lists SET version_id=NULL WHERE class_id=$1',[c2]);
+    });
+    await asRole('anon',{},async () => assert.equal((await db.query('SELECT * FROM rider_associations')).rows.length,0));
+    assert.equal((await db.query('SELECT * FROM documents')).rows.length,1);
+  });
   await db.close();
 });

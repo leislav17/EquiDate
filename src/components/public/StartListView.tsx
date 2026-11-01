@@ -21,7 +21,7 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
   const entry = classes.find(c => c.id === classId);
   const list = publishedStartList(classId, startHeads, startVersions);
   const pdf = startPdf(documents, classId);
-  const close = () => { if (onBack) { onBack(); return; } if (entry) setSelectedEventId(entry.eventId); window.location.hash = ''; };
+  const close = () => { if (onBack) { onBack(); return; } setSelectedEventId(entry?.eventId || null); };
   const Heading = embedded ? 'h3' : 'h1';
   const query = search.trim().toLocaleLowerCase();
   const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.category || ''} ${row.club || ''} ${row.position}`.toLocaleLowerCase().includes(query)) || [];

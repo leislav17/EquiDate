@@ -16,6 +16,7 @@ export interface DocumentPage {
 
 export interface EquestrianEvent {
   id: string;
+  slug?: string; // Permanent public URL; optional for pre-migration databases.
   name: string;
   venue: string;
   location?: string;  // Database column location

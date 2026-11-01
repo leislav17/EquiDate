@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { EquestrianEvent, EventStatus } from '../../../types/equestrian';
 import { useEquestrian } from '../../../context/EquestrianContext';
 import { Upload, Trash2, Image as ImageIcon, Check, AlertTriangle, Loader2 } from 'lucide-react';
+import { eventPath } from '../../../utils/navigation';
 
 interface GeneralInfoSectionProps {
   event: EquestrianEvent | null;
@@ -19,6 +20,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   const { addEvent, updateEvent, uploadEventImage } = useEquestrian();
 
   const [name, setName] = useState(event?.name || '');
+  const [slug, setSlug] = useState('');
   const [venue, setVenue] = useState(event?.venue || '');
   const [city, setCity] = useState(event?.city || 'Buenos Aires');
   const [imageUrl, setImageUrl] = useState(event?.imageUrl || '');
@@ -39,6 +41,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
 
   // Sync if event changes
   useEffect(() => {
+    setSlug('');
     if (event) {
       setName(event.name);
       setVenue(event.venue);
@@ -55,7 +58,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   // Track dirty changes
   useEffect(() => {
     if (!event) {
-      const hasContent = Boolean(name.trim() || venue.trim() || imageUrl.trim());
+      const hasContent = Boolean(name.trim() || venue.trim() || imageUrl.trim() || slug.trim());
       onDirtyChange?.(hasContent);
       return;
     }
@@ -68,7 +71,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
       endDate !== event.endDate ||
       status !== event.status;
     onDirtyChange?.(isDirty);
-  }, [name, venue, city, imageUrl, startDate, endDate, status, event, onDirtyChange]);
+  }, [name, venue, city, imageUrl, startDate, endDate, status, slug, event, onDirtyChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +112,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
         onSaved(event.id);
       } else {
         const newId = await addEvent({
+          ...(slug.trim() ? { slug: slug.trim() } : {}),
           name: name.trim(),
           venue: venue.trim(),
           city: city.trim() || undefined,
@@ -208,6 +212,15 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
               placeholder="Ej: Gran Premio San Jorge - Clasificatorio"
               className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 text-sm font-medium text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#123E59] focus:border-transparent transition-all"
             />
+          </div>
+
+          <div>
+            <label htmlFor="event-slug" className="block text-xs font-bold text-neutral-700 mb-1">Enlace del concurso</label>
+            {event ? <a href={eventPath(event)} target="_blank" rel="noopener noreferrer" className="text-sm text-[#123E59] underline break-all">{window.location.origin + eventPath(event)}</a>
+              : <input id="event-slug" value={slug} onChange={e => setSlug(e.target.value.toLowerCase())}
+                pattern="[a-z0-9]+(-[a-z0-9]+)*" maxLength={120} placeholder="Ej: gran-premio-primavera"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 text-sm" />}
+            <p className="text-xs text-neutral-500 mt-1">{event ? 'El enlace se conserva aunque cambies el nombre.' : 'Opcional: si lo dejás vacío se genera automáticamente. Una vez creado, el enlace es permanente.'}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

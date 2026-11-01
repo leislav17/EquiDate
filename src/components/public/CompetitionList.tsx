@@ -600,14 +600,11 @@ export const CompetitionList: React.FC = () => {
         {/* 3. SELECTOR: LISTA | CALENDARIO (Debajo de los filtros)  */}
         {/* ======================================================== */}
         <div className="flex items-center justify-between gap-3 mb-4">
-          {/* Status & Event count header e.g. "OCTUBRE 2026 · 5 concursos" */}
+          {/* Current filter heading */}
           <div className="flex items-baseline gap-2 min-w-0">
             <h3 className="font-display text-sm sm:text-base font-black text-[#123E59] tracking-tight truncate">
               {filterTitle}
             </h3>
-            <span className="text-xs font-semibold text-neutral-500 shrink-0">
-              · {filteredEvents.length} {filteredEvents.length === 1 ? 'concurso' : 'concursos'}
-            </span>
           </div>
 
           {/* Compact View Switcher */}
@@ -772,9 +769,6 @@ export const CompetitionList: React.FC = () => {
                 <CalendarIcon className="w-4 h-4 text-[#93c5fd] shrink-0 hidden xs:inline" />
                 <span className="font-display text-sm sm:text-base md:text-lg font-black tracking-wide uppercase truncate">
                   {MONTHS_FULL[calendarMonth]} {activeYear}
-                </span>
-                <span className="text-xs text-white/70 font-semibold font-mono hidden sm:inline">
-                  · {calendarEvents.length} {calendarEvents.length === 1 ? 'concurso' : 'concursos'}
                 </span>
               </div>
 

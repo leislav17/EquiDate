@@ -5,6 +5,10 @@
 [build.environment]
   NODE_VERSION = "24"
 
+# The main branch is TEST. Keep production credentials in its separate context.
+[context.main.environment]
+  VITE_SUPABASE_URL = "https://slophgtrynlfesjonbzf.supabase.co"
+
 # Single Page App routing: redirect all routes to /index.html
 [[redirects]]
   from = "/*"

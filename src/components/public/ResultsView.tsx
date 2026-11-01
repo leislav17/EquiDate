@@ -72,7 +72,7 @@ export function ResultsView({ classId }: { classId: string }) {
   const pdf = resultPdf(documents, classId);
   const query = search.trim().toLocaleLowerCase();
   const rows = result?.entries.filter(r => `${r.rider} ${r.horse} ${r.club || ''} ${r.rank || ''} ${r.category || ''}`.toLocaleLowerCase().includes(query)) || [];
-  const close = () => { if (entry) setSelectedEventId(entry.eventId); window.location.hash = ''; };
+  const close = () => setSelectedEventId(entry?.eventId || null);
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Resultados-${entry?.number || classId}.pdf`)}` : '';
   return <section aria-label="Resultados de la prueba" className="min-h-[calc(100vh-64px)] bg-white px-4 sm:px-8 py-5 sm:py-8"><div className="max-w-5xl mx-auto">
     <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver al concurso</button>

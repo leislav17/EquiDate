@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { readNavigationEntry, writeNavigationEntry } from '../utils/navigationSession';
-import { persistNavigationScroll } from '../utils/navigationScroll';
+import { browserScrollEnvironment, persistNavigationScroll } from '../utils/navigationScroll';
 
 /** The owner mounts with a stable competition ID. Data refreshes never reset this state. */
 export function useCompetitionDisclosure(eventId: string | null, validDayIds: string[]) {
@@ -34,9 +34,7 @@ export function useNavigationScroll(key: string | null, ready: boolean, route: s
     if (!ready) return;
     let storage;
     try { storage = window.sessionStorage; } catch { /* Safari private mode */ }
-    return persistNavigationScroll(key, route, restored.current !== key, () => { restored.current = key; }, {
-      window, document, storage, requestFrame: requestAnimationFrame, cancelFrame: cancelAnimationFrame, now: () => performance.now()
-    });
+    return persistNavigationScroll(key, route, restored.current !== key, () => { restored.current = key; }, browserScrollEnvironment(window, document, storage));
   }, [key, ready, route]);
 }
 

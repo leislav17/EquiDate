@@ -4,7 +4,7 @@ import { ArrowLeft, Menu, X } from 'lucide-react';
 import { navigate } from '../../utils/navigation';
 
 export const Header: React.FC = () => {
-  const { activeView, setActiveView, setSelectedEventId, isAdmin, routeLocation } = useEquestrian();
+  const { activeView, setActiveView, setSelectedEventId, isAdmin, logoutAdmin, routeLocation } = useEquestrian();
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { setOpen(false); }, [routeLocation]);
@@ -48,7 +48,8 @@ export const Header: React.FC = () => {
         <nav aria-label="Menú principal" className="mt-6 flex flex-col gap-2">
           <button onClick={() => go('/')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Inicio</button>
           <button onClick={() => go('/buscar/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Buscar jinetes</button>
-          {isAdmin && <button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button>}
+          <button onClick={() => go('/informacion-util')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Información útil</button>
+          {isAdmin && <><button onClick={() => go('/admin')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Panel de administración</button><button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button><button onClick={() => { void logoutAdmin().then(() => setOpen(false)).catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Cerrar sesión</button></>}
         </nav>
       </div>
     </dialog>

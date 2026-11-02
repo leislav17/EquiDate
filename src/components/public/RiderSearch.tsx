@@ -5,11 +5,13 @@ import { riderDirectory, riderParticipations, searchRiders, suggestRiderAssociat
 import type { ResultEntry, ResultVersion } from '../../utils/results';
 import { ResultDetailsPanel, ResultRows } from './ResultsView';
 import { eventPath } from '../../utils/navigation';
+import { sessionDataScope } from '../../utils/navigationSession';
 import { RiderHistory } from '../admin/RiderHistory';
 import { ChevronDown } from 'lucide-react';
 
 export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const data = useEquestrian();
+  const associationScope = sessionDataScope(data.session);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [associations, setAssociations] = useState<RiderAssociation[]>([]);
@@ -37,7 +39,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
       if (current) { setAssociations(rows); setLoading(false); setChecked([]); setReviewSources([]); }
     })().catch(() => { if (current) { setError('No pudimos cargar el buscador. Reintentá.'); setLoading(false); } });
     return () => { current = false; };
-  }, [reload, data.session]);
+  }, [reload, associationScope]);
   const directory = useMemo(() => riderDirectory(data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations), [data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations]);
   const matches = searchRiders(directory, query);
   const suggestions = useMemo(() => admin ? suggestRiderAssociations(directory) : [], [admin, directory]);

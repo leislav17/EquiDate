@@ -73,9 +73,9 @@ export const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <AdminCompetitionList
+    <><nav className="max-w-7xl mx-auto px-4 pt-6"><button onClick={() => navigate('/admin/informacion-util')} className="min-h-11 px-4 border rounded-lg text-[#123E59]">Información útil</button></nav><AdminCompetitionList
       onSelectEvent={handleSelectEvent}
       onNewEvent={handleNewEvent}
-    />
+    /></>
   );
 };

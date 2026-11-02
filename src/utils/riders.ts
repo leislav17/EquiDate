@@ -3,11 +3,10 @@ import { publishedStartList, type StartHead, type StartVersion, type StartEntry 
 import { publishedResults, type ResultVersion, type ResultEntry } from './results.ts';
 
 export const normalizeRider = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
-export interface RiderAssociation { source: string; identity: string }
+export interface RiderAssociation { source: string; identity: string; reason?: string; canonical_name?: string | null; name_variants?: string[] }
 export interface RiderRecord { source: string; classId: string; row: StartEntry; kind: 'start' | 'result'; version: StartVersion | ResultVersion; identity: string }
-export interface RiderCandidate { id: string; name: string; horses: string[]; clubs: string[]; records: RiderRecord[] }
+export interface RiderCandidate { id: string; name: string; horses: string[]; clubs: string[]; records: RiderRecord[]; variants?: string[] }
 export interface Participation { id: string; classId: string; start?: RiderRecord; result?: RiderRecord }
-const pair = (row: StartEntry) => JSON.stringify([normalizeRider(row.rider), normalizeRider(row.horse)]);
 const knownHorse = (horse: string) => !!normalizeRider(horse) && !/^(?:[-–—?.]+|s\/?d|sin (?:caballo|datos)|no informado)$/i.test(normalizeRider(horse));
 
 /** Only current published pointers and public events enter the public directory, even in an admin session. */
@@ -47,13 +46,18 @@ export function riderDirectory(events: EquestrianEvent[], classes: CompetitionCl
       }
     });
   }
+  for (const group of groups.values()) {
+    const correction = group.records.map(r => associations.find(a => a.source === r.source)).find(a => a?.canonical_name);
+    if (correction?.canonical_name) group.name = correction.canonical_name;
+    group.variants = [...new Set(group.records.flatMap(r => associations.find(a => a.source === r.source)?.name_variants || []))];
+  }
   return [...groups.values()].sort((a,b) => a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id));
 }
 
 export function searchRiders(directory: RiderCandidate[], query: string): RiderCandidate[] {
   const words = normalizeRider(query).split(' ').filter(Boolean);
   if (!words.length) return [];
-  return directory.filter(candidate => candidate.records.some(r => words.every(word => normalizeRider(r.row.rider).includes(word))));
+  return directory.filter(candidate => [candidate.name, ...(candidate.variants || []), ...candidate.records.map(r => r.row.rider)].some(name => words.every(word => normalizeRider(name).includes(word))));
 }
 
 export interface RiderSuggestion { id: string; candidates: RiderCandidate[]; reasons: string[]; priority: number }
@@ -98,7 +102,7 @@ export function riderParticipations(candidate: RiderCandidate): Participation[] 
   const starts = candidate.records.filter(r => r.kind === 'start');
   const results = candidate.records.filter(r => r.kind === 'result');
   const used = new Set<string>();
-  const samePair = (a: RiderRecord, b: RiderRecord) => a.classId === b.classId && knownHorse(a.row.horse) && pair(a.row) === pair(b.row);
+  const samePair = (a: RiderRecord, b: RiderRecord) => a.classId === b.classId && knownHorse(a.row.horse) && a.identity === b.identity && normalizeRider(a.row.horse) === normalizeRider(b.row.horse);
   const rows: Participation[] = starts.map(start => {
     const matching = results.filter(r => samePair(start, r));
     const unique = matching.length === 1 && starts.filter(s => samePair(s, matching[0])).length === 1;

@@ -9,6 +9,7 @@ import { AdminLogin } from './components/admin/AdminLogin';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
 import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
+import { UsefulInfo } from './components/public/UsefulInfo';
 import { RiderSearch } from './components/public/RiderSearch';
 import { trackPage } from './lib/analytics';
 import { eventPath, resourceHash, resourceSuffix } from './utils/navigation';
@@ -33,6 +34,8 @@ const AppContent: React.FC = () => {
   } = useEquestrian();
 
   const hash = resourceHash(routeLocation);
+  const usefulInfo = routeLocation.pathname.replace(/\/+$/, '') === '/informacion-util';
+  const usefulAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/informacion-util';
   const riderSearch = routeLocation.pathname.replace(/\/+$/, '') === '/buscar/jinetes';
   const riderAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/jinetes';
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
@@ -48,13 +51,13 @@ const AppContent: React.FC = () => {
     const event = events.find(event => event.id === (entry?.eventId || doc?.eventId || day?.eventId || selectedEventId));
     if (event?.slug && (routeLocation.pathname !== eventPath(event) + resourceSuffix(hash) ||
       routeLocation.hash || new URLSearchParams(routeLocation.search).has('event'))) return;
-    const screen = riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
+    const screen = usefulInfo ? 'Información útil' : riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
       : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
       : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : 'Concursos';
     const title = event ? `${screen === 'Concursos' ? '' : screen + ' · '}${event.name} · EquiDate` : `${screen} · EquiDate`;
     document.title = title;
     trackPage(window.location.href);
-  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch]);
+  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo]);
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -73,7 +76,7 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {riderSearch ? <RiderSearch /> : resultsId ? (
+        {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : resultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>
             : dataError ? null : <ResultsView key={resultsId} classId={resultsId} />
         ) : startListId ? (
@@ -88,7 +91,7 @@ const AppContent: React.FC = () => {
               <span>Verificando acceso…</span>
             </div>
           ) : isAdmin ? (
-            riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
+            usefulAdmin ? <UsefulInfo admin /> : riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
           ) : (
             <AdminLogin />
           )

@@ -218,7 +218,21 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const requestVersion = useRef(0);
   const previousDocumentRoute = useRef('');
   const isBackendConnected = isSupabaseConfigured();
-  const isAdmin = isBackendConnected && session?.user.app_metadata?.equidate_admin === true;
+  const [verifiedAdmin, setVerifiedAdmin] = useState(false);
+  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const isAdmin = isBackendConnected && !!session && verifiedAdmin && verifiedToken === session.access_token;
+  useEffect(() => {
+    let active = true;
+    setVerifiedAdmin(false);
+    if (!session) { setPermissionLoading(false); return; }
+    setPermissionLoading(true);
+    void (async () => {
+      const { data, error } = await supabase.rpc('equidate_is_admin');
+      if (active) { setVerifiedAdmin(!error && data === true); setVerifiedToken(session.access_token); setPermissionLoading(false); }
+    })().catch(() => { if (active) { setVerifiedAdmin(false); setVerifiedToken(session.access_token); setPermissionLoading(false); } });
+    return () => { active = false; };
+  }, [session]);
   const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
     () => resourceHash(readLocation()).startsWith('#document-') ? resourceHash(readLocation()).slice(10) : null
   );
@@ -456,7 +470,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      if (data.user?.app_metadata?.equidate_admin !== true) {
+      const permission = await supabase.rpc('equidate_is_admin');
+      if (permission.error || permission.data !== true) {
         await supabase.auth.signOut();
         return { success: false, error: 'Esta cuenta no tiene permisos de administración.' };
       }
@@ -1038,7 +1053,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
     routeNotFound, routeLocation,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
-    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,
+    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading: isAuthLoading || permissionLoading || (!!session && verifiedToken !== session.access_token),
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
     setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus, uploadEventImage,
     addDocument, updateDocument, deleteDocument, reorderDocument,

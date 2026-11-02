@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NAVIGATION_STORAGE_KEY, NAVIGATION_TTL, readNavigationEntry, writeNavigationEntry, sessionDataScope, type NavigationStorage } from '../src/utils/navigationSession.ts';
-import { persistNavigationScroll, type ScrollEnvironment } from '../src/utils/navigationScroll.ts';
+import { browserScrollEnvironment, persistNavigationScroll, type ScrollEnvironment } from '../src/utils/navigationScroll.ts';
 import { BEFORE_NAVIGATION_EVENT } from '../src/utils/navigation.ts';
 const storage = () => { const data=new Map<string,string>(); return {getItem:(k:string)=>data.get(k)||null,setItem:(k:string,v:string)=>{data.set(k,v);}}; };
 
@@ -70,4 +70,27 @@ test('Shortened/removed content clamps scroll after a bounded wait; background u
   const h=harness();h.frame();h.advance(2100);h.frame();assert.equal(h.win.scrollY,100);h.stop();
   h.win.scrollY=60;const stop=persistNavigationScroll('view:A:overview','/a',false,()=>assert.fail('unexpected restoration'),h.env);
   h.frame();assert.equal(h.win.scrollY,60);stop();
+});
+
+test('Opening a competition binds native animation APIs to Window; cleanup and reload do not throw', () => {
+  const h=harness();h.stop();
+  let callbacks:FrameRequestCallback[]=[];
+  const win=Object.assign(h.win,{
+    performance:{now:()=>0},
+    requestAnimationFrame(callback:FrameRequestCallback){
+      assert.equal(this,win,'Illegal invocation: requestAnimationFrame requires Window');
+      callbacks.push(callback);return callbacks.length;
+    },
+    cancelAnimationFrame(_id:number){ assert.equal(this,win,'Illegal invocation: cancelAnimationFrame requires Window'); }
+  });
+  // The previous code copied these methods onto env and invoked them with the wrong receiver.
+  const broken={requestFrame:win.requestAnimationFrame};
+  assert.throws(()=>broken.requestFrame(()=>{}),/Illegal invocation/);
+  const env=browserScrollEnvironment(win as unknown as Window,h.doc as unknown as Document,h.s);
+  h.doc.documentElement.scrollHeight=3000;
+  let restored=0;
+  const stop=persistNavigationScroll('view:A:overview','/a',true,()=>restored++,env);
+  callbacks.shift()!(0);
+  assert.equal(h.win.scrollY,600);assert.equal(restored,1);
+  assert.doesNotThrow(stop);
 });

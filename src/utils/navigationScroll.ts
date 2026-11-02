@@ -23,7 +23,7 @@ export function persistNavigationScroll(key: string, route: string, restore: boo
     if (cancelled) return;
     const max = Math.max(0, doc.documentElement.scrollHeight - win.innerHeight);
     if (max >= target || env.now() - started >= 2000) {
-      win.scrollTo({ top: Math.min(target, max), behavior: 'instant' });
+      win.scrollTo({ top: Math.min(target, max), behavior: 'auto' });
       restoring = false; onRestored();
     } else frame = env.requestFrame(tick);
   };
@@ -43,4 +43,12 @@ export function persistNavigationScroll(key: string, route: string, restore: boo
     win.removeEventListener(BEFORE_NAVIGATION_EVENT,save); doc.removeEventListener('visibilitychange',hidden);
     for (const name of ['touchstart','wheel','pointerdown','keydown']) win.removeEventListener(name,cancel);
   };
+}
+
+/** Window animation APIs require their native receiver (not the environment object). */
+export function browserScrollEnvironment(win: Window, doc: Document, storage?: NavigationStorage): ScrollEnvironment {
+  return { window: win, document: doc, storage,
+    requestFrame: callback => win.requestAnimationFrame(callback),
+    cancelFrame: handle => win.cancelAnimationFrame(handle),
+    now: () => win.performance.now() };
 }

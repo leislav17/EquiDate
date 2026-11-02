@@ -11,6 +11,7 @@ import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
 import { UsefulInfo } from './components/public/UsefulInfo';
 import { RiderSearch } from './components/public/RiderSearch';
+import { useNavigationScroll } from './hooks/useNavigationSession';
 import { trackPage } from './lib/analytics';
 import { eventPath, resourceHash, resourceSuffix } from './utils/navigation';
 
@@ -30,6 +31,7 @@ const AppContent: React.FC = () => {
     isAuthLoading,
     isLoading,
     dataError,
+    refreshError,
     refreshData
   } = useEquestrian();
 
@@ -41,6 +43,12 @@ const AppContent: React.FC = () => {
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
   const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
   const resultsId = hash.startsWith('#results/') ? hash.slice(9) : null;
+
+  const validResource = resultsId || startListId ? classes.some(c => c.id === (resultsId || startListId) && c.eventId === selectedEventId)
+    : viewingDocumentId ? documents.some(d => d.id === viewingDocumentId && d.eventId === selectedEventId)
+    : transmissionId ? days.some(d => d.id === transmissionId.split('/')[0] && d.eventId === selectedEventId) : true;
+  const scrollKey = selectedEventId && validResource ? `view:${selectedEventId}:${hash || 'overview'}` : null;
+  useNavigationScroll(scrollKey, !isLoading && !dataError && activeView === 'public', routeLocation.pathname + routeLocation.hash);
 
   useEffect(() => {
     // Wait for the route to resolve; loading/auth refreshes are not pageviews.
@@ -75,7 +83,7 @@ const AppContent: React.FC = () => {
 
       {/* Main Content Router */}
       <main className="flex-1 w-full">
-        {dataError && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
+        {(dataError || refreshError) && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError || refreshError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
         {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : resultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>
             : dataError ? null : <ResultsView key={resultsId} classId={resultsId} />

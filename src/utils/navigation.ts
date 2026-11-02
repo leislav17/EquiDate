@@ -1,3 +1,4 @@
+export const BEFORE_NAVIGATION_EVENT = 'equidate:before-navigation';
 export const NAVIGATION_EVENT = 'equidate:navigation';
 
 export interface RouteLocation { pathname: string; search: string; hash: string }
@@ -39,6 +40,7 @@ export function readLocation(): RouteLocation {
 
 export function navigate(url: string, replace = false): void {
   if (url === window.location.pathname + window.location.search + window.location.hash) return;
+  window.dispatchEvent(new Event(BEFORE_NAVIGATION_EVENT));
   window.history[replace ? 'replaceState' : 'pushState']({}, '', url);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

@@ -96,7 +96,7 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {/* 1. Gestión de pistas */}
       <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 sm:p-5 shadow-xs">
         <ArenaSettings eventId={event.id} />

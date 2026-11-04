@@ -1,10 +1,10 @@
 import React from 'react';
-import { CalendarDays, Users, Link, ArrowRight } from 'lucide-react';
+import { CalendarDays, Users, Link } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { AdminCompetitionList } from './AdminCompetitionList';
 import { AdminEventEditor } from './AdminEventEditor';
 import { navigate } from '../../utils/navigation';
-import { formatDateRange } from '../../utils/dateUtils';
+import { AdminCompetitionCard } from './AdminCompetitionCard';
 
 export const AdminDashboard: React.FC = () => {
   const { events, routeLocation } = useEquestrian();
@@ -28,14 +28,11 @@ export const AdminDashboard: React.FC = () => {
       <button key={url} onClick={() => navigate(url)} className="bg-white border border-neutral-200 rounded-xl p-5 text-left flex items-center gap-3 hover:border-[#123E59] min-h-24 text-[#123E59] font-bold">
         <Icon className="w-6 h-6 shrink-0" /><span>{title}</span>
       </button>)}</div>
-    {!!recent.length && <section className="bg-white border rounded-xl p-4">
-      <h2 className="font-bold text-[#123E59] mb-2">Concursos recientes</h2>
-      <ul className="divide-y">{recent.map(event => <li key={event.id}>
-        <button onClick={() => selectEvent(event.id)} className="w-full py-3 flex items-center justify-between gap-3 text-left">
-          <span className="min-w-0"><span className="block font-semibold break-words">{event.name}</span>
-            <span className="text-xs text-neutral-500">{formatDateRange(event.startDate, event.endDate)} · {event.status === 'published' ? 'Publicado' : 'Borrador'}</span></span>
-          <ArrowRight className="w-4 h-4 shrink-0 text-[#123E59]" />
-        </button></li>)}</ul>
+    {!!recent.length && <section aria-labelledby="recent-contests-title">
+      <h2 id="recent-contests-title" className="font-bold text-[#123E59] mb-3">Concursos recientes</h2>
+      <div className="space-y-3">{recent.map(event =>
+        <AdminCompetitionCard key={event.id} event={event} onSelect={selectEvent} />
+      )}</div>
     </section>}
   </div>;
 };

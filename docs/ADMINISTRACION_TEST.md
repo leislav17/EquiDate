@@ -8,7 +8,7 @@
 - `/admin/concursos?event=new`: solo Información general. Se crea como borrador y, tras guardar, se abre el editor del ID real con las cinco secciones.
 - `/admin/jinetes` y `/admin/informacion-util`: mantienen sus componentes y autorización.
 
-El menú hamburguesa existente separa público y administración. El editor usa navegación vertical desde 1024px y un selector por debajo. Información importante conserva el editor enriquecido; Jornadas y pruebas y Transmisión conservan sus componentes y operaciones por jornada/pista.
+El menú hamburguesa existente separa público y administración. El editor mantiene el mismo ancho máximo del listado y usa un selector de secciones tanto en escritorio como en móvil; los formularios comparten la alineación del encabezado. Los concursos recientes reutilizan las tarjetas individuales del listado, con bordes gris suave. Información importante conserva el editor enriquecido; Jornadas y pruebas y Transmisión conservan sus componentes y operaciones por jornada/pista.
 
 ## Documentos
 

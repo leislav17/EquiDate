@@ -71,7 +71,7 @@ export const ImportantInfoSection: React.FC<ImportantInfoSectionProps> = ({
   const hasSavedInfo = Boolean(event.importantInfo && event.importantInfo.trim().length > 0);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
         <div className="border-b border-neutral-200 pb-3 flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">

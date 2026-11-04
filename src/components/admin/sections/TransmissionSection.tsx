@@ -21,7 +21,7 @@ export const TransmissionSection: React.FC<TransmissionSectionProps> = ({ event 
   const arenaId = selectedArena || eventArenas.find((a) => a.isPrimary)?.id || (eventArenas[0]?.id ?? '');
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
         <div className="border-b border-neutral-200 pb-3">
           <div className="flex items-center gap-2">

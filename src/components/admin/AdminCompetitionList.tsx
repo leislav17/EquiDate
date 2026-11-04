@@ -1,14 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { EquestrianEvent } from '../../types/equestrian';
+import { AdminCompetitionCard } from './AdminCompetitionCard';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { formatDateRange, getArgentinaTodayStr, MONTHS_FULL, getArgentinaDate } from '../../utils/dateUtils';
+import { getArgentinaTodayStr, MONTHS_FULL, getArgentinaDate } from '../../utils/dateUtils';
 import {
   Plus,
   Search,
   RotateCcw,
   Calendar,
-  MapPin,
-  ArrowRight,
   ChevronLeft,
   ChevronRight,
   Filter,
@@ -394,66 +392,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
               </button>
             </div>
           ) : (
-            paginatedEvents.map((evt) => {
-              const dateRangeText = formatDateRange(evt.startDate, evt.endDate);
-              const isPublished = evt.status === 'published';
-
-              return (
-                <div
-                  key={evt.id}
-                  onClick={() => handleSelectEvent(evt.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleSelectEvent(evt.id);
-                    }
-                  }}
-                  className="bg-white border border-neutral-200/90 hover:border-[#123E59] rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs hover:shadow-md transition-all cursor-pointer group select-none"
-                >
-                  {/* Left: Fecha, Nombre, Club, Estado */}
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="font-mono text-xs font-bold text-[#123E59] tracking-wide">
-                        {dateRangeText}
-                      </span>
-                      <span
-                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider ${
-                          isPublished
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-neutral-200 text-neutral-700'
-                        }`}
-                      >
-                        {isPublished ? 'PUBLICADO' : 'BORRADOR'}
-                      </span>
-                    </div>
-
-                    <h3 className="font-display text-sm sm:text-base font-bold text-neutral-900 group-hover:text-[#123E59] transition-colors truncate">
-                      {evt.name}
-                    </h3>
-
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
-                      <MapPin className="w-3.5 h-3.5 text-[#123E59] shrink-0" />
-                      <span className="truncate">{evt.venue}</span>
-                      {evt.city && (
-                        <span className="text-neutral-400 font-normal truncate hidden xs:inline">
-                          · {evt.city}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right: Acción limpia "Administrar →" */}
-                  <div className="flex items-center justify-end shrink-0">
-                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#123E59] bg-neutral-100 group-hover:bg-[#123E59] group-hover:text-white rounded-xl transition-all shadow-2xs">
-                      <span>Administrar</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                </div>
-              );
-            })
+            paginatedEvents.map(evt => <AdminCompetitionCard key={evt.id} event={evt} onSelect={handleSelectEvent} />)
           )}
         </div>
 

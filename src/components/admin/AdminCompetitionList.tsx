@@ -32,8 +32,6 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
   const {
     events,
     isBackendConnected,
-    session,
-    logoutAdmin,
   } = useEquestrian();
 
   const argentinaTodayStr = useMemo(() => getArgentinaTodayStr(), []);
@@ -207,7 +205,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-64px)] pb-16">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
         {/* ======================================================== */}
         {/* CABECERA PRINCIPAL                                       */}
         {/* ======================================================== */}
@@ -215,7 +213,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="font-display text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
-                Gestión de Concursos
+                Gestionar concursos
               </h1>
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide ${
@@ -238,15 +236,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {session && (
-              <button
-                type="button"
-                onClick={() => void logoutAdmin()}
-                className="px-3.5 py-2 text-xs font-bold text-neutral-600 hover:text-neutral-900 bg-white hover:bg-neutral-100 border border-neutral-200 rounded-xl transition-colors cursor-pointer"
-              >
-                Cerrar Sesión
-              </button>
-            )}
+
 
             <button
               type="button"
@@ -291,7 +281,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                   setPeriod(e.target.value as any);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
               >
                 <option value="upcoming">Próximos y en curso</option>
                 <option value="past">Concursos anteriores</option>
@@ -310,7 +300,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                   setStatus(e.target.value as any);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
               >
                 <option value="all">Todos (publicados y borradores)</option>
                 <option value="published">Solo publicados</option>
@@ -329,7 +319,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                   setYearFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
               >
                 <option value="">Todos los años</option>
                 {availableYears.map((yr) => (
@@ -351,7 +341,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                   setMonthFilter(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
+                className="w-full min-w-0 min-h-11 px-3 py-2 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-800 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#123E59]"
               >
                 <option value={-1}>Todos los meses</option>
                 {MONTHS_FULL.map((name, idx) => (
@@ -420,10 +410,10 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                       handleSelectEvent(evt.id);
                     }
                   }}
-                  className="bg-white border border-neutral-200/90 hover:border-[#123E59] rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs hover:shadow-md transition-all cursor-pointer group select-none"
+                  className="bg-white border border-neutral-200/90 hover:border-[#123E59] rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs hover:shadow-md transition-all cursor-pointer group select-none"
                 >
                   {/* Left: Fecha, Nombre, Club, Estado */}
-                  <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="space-y-1 flex-1 min-w-0">
                     <div className="flex items-center gap-2.5 flex-wrap">
                       <span className="font-mono text-xs font-bold text-[#123E59] tracking-wide">
                         {dateRangeText}
@@ -439,7 +429,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                       </span>
                     </div>
 
-                    <h3 className="font-display text-base sm:text-lg font-bold text-neutral-900 group-hover:text-[#123E59] transition-colors truncate">
+                    <h3 className="font-display text-sm sm:text-base font-bold text-neutral-900 group-hover:text-[#123E59] transition-colors truncate">
                       {evt.name}
                     </h3>
 
@@ -455,7 +445,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
                   </div>
 
                   {/* Right: Acción limpia "Administrar →" */}
-                  <div className="flex items-center justify-end sm:pl-4 border-t sm:border-t-0 border-neutral-100 pt-3 sm:pt-0 shrink-0">
+                  <div className="flex items-center justify-end shrink-0">
                     <span className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#123E59] bg-neutral-100 group-hover:bg-[#123E59] group-hover:text-white rounded-xl transition-all shadow-2xs">
                       <span>Administrar</span>
                       <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />

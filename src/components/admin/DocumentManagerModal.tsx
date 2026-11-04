@@ -26,6 +26,11 @@ interface DocumentManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: EquestrianEvent;
+  embedded?: boolean;
+  visibleIds?: string[];
+  uploadOnly?: boolean;
+  initialDate?: string;
+  initialClassId?: string;
 }
 
 interface PageItem {
@@ -39,7 +44,7 @@ interface PageItem {
 export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   isOpen,
   onClose,
-  event
+  event, embedded = false, visibleIds, uploadOnly = false, initialDate = '', initialClassId = ''
 }) => {
   const {
     getDocumentsForEvent,
@@ -52,7 +57,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
     setViewingDocumentId
   } = useEquestrian();
 
-  const documents = getDocumentsForEvent(event.id);
+  const documents = getDocumentsForEvent(event.id).filter(doc => !visibleIds || visibleIds.includes(doc.id));
 
   // Available days dynamically generated from event startDate to endDate
   const availableDays = useMemo(() => {
@@ -67,12 +72,13 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   }, [event.startDate, event.endDate]);
 
   // Form states for "+ AGREGAR DOCUMENTO"
-  const [isAdding, setIsAdding] = useState(false);
+  const [isAdding, setIsAdding] = useState(uploadOnly);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
 
   // New doc fields
   const [docType, setDocType] = useState<DocumentType>('PROGRAM');
-  const [docClass, setDocClass] = useState('');
+  const [docClass, setDocClass] = useState(initialClassId);
+  const [uploadDate, setUploadDate] = useState(initialDate);
   const [customDocName, setCustomDocName] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -281,6 +287,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
       setCustomDocName('');
       setFormError('');
       setSaveProgress('');
+      if (uploadOnly) onClose();
     } catch (error) {
       setFormError((error as Error).message || 'No se pudo guardar.');
     } finally {
@@ -292,10 +299,10 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
   const runAction = (action: Promise<unknown>) => { void action.catch(error => setFormError(error.message || 'No se pudo guardar.')); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-neutral-200 max-h-[90vh] flex flex-col">
+    <div role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? undefined : "Archivos del concurso"} className={embedded ? "min-w-0" : "fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 overflow-y-auto"}>
+      <div className={embedded ? "min-w-0" : "bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-neutral-200 max-h-[90dvh] flex flex-col"}>
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-neutral-100 shrink-0">
+        {!embedded && <div className="flex items-center justify-between pb-4 border-b border-neutral-100 shrink-0">
           <div>
             <h2 className="font-display text-lg font-black text-neutral-900">
               Documentos del Concurso
@@ -306,18 +313,19 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+            onClick={() => { if (!saving) onClose(); }} disabled={saving}
+            className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        }
         {formError && <p role="alert" className="text-sm text-red-700 py-2">{formError}</p>}
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto py-4 space-y-5">
           {/* Top Actions: Add Document Button */}
-          {!isAdding && (
+          {!embedded && !uploadOnly && !isAdding && (
             <div className="flex justify-between items-center bg-neutral-50 p-3 rounded-xl border border-neutral-200">
               <span className="text-xs font-bold text-neutral-700">
                 {documents.length} {documents.length === 1 ? 'documento cargado' : 'documentos cargados'}
@@ -345,7 +353,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setIsAdding(false)}
+                  disabled={saving} onClick={() => uploadOnly ? onClose() : setIsAdding(false)}
                   className="text-xs text-neutral-500 hover:text-neutral-900"
                 >
                   Cancelar
@@ -358,7 +366,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handleSaveDocument} className="space-y-4">
+              <form onSubmit={handleSaveDocument} className="space-y-4"><fieldset disabled={saving} className="min-w-0 space-y-4">
                 {/* 1. TIPO */}
                 <div>
                   <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
@@ -447,17 +455,23 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                       : 'El reglamento se asocia al concurso completo.'}
                   </p>
                 ) : (
+                  <div className="space-y-3">
+                  <label className="block text-sm font-bold">Jornada del documento
+                    <select aria-label="Jornada del documento" value={uploadDate} onChange={e => { setUploadDate(e.target.value); setDocClass(''); }} className="block w-full min-w-0 p-3 border rounded-lg mt-1 text-sm">
+                      <option value="">Todas las jornadas</option>{availableDays.map(day => <option key={day.dateStr} value={day.dateStr}>{day.label}</option>)}
+                    </select>
+                  </label>
                   <label className="block text-sm font-bold">
                     Prueba del documento
                     <select required aria-label="Prueba del documento" value={docClass} onChange={form => setDocClass(form.target.value)} className="block w-full p-3 border rounded-lg mt-1 text-sm">
                       <option value="" disabled>Seleccioná una prueba</option>
-                      {classes.filter(entry => entry.eventId === event.id).map(entry => {
+                      {classes.filter(entry => entry.eventId === event.id && (!uploadDate || entry.date === uploadDate)).map(entry => {
                         const sched = formatClassSchedule(entry);
                         return <option key={entry.id} value={entry.id}>{entry.date} · {sched ? `${sched} · ` : ''}Prueba {entry.number} · {entry.name}{arenas.filter(arena => arena.eventId === event.id).length > 1 ? ' · ' + arenas.find(arena => arena.id === entry.arenaId)?.name : ''}</option>;
                       })}
                     </select>
-                    {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde el botón Pruebas del concurso.</span>}
-                  </label>
+                    {!classes.some(entry => entry.eventId === event.id) && <span className="block text-xs text-neutral-500 mt-2">Primero cargá las pruebas desde Jornadas y pruebas.</span>}
+                  </label></div>
                 )}
 
                 {/* 4. ARCHIVO O PÁGINAS MULTIPÁGINA */}
@@ -496,7 +510,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                           setPdfFile(null);
                           setPdfName('');
                         }}
-                        className="p-1.5 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-neutral-100 transition-colors cursor-pointer"
                         title="Quitar PDF"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -630,8 +644,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                 <div className="pt-2 flex justify-end gap-2">
                   <button
                     type="button"
-                    disabled={saving}
-                    onClick={() => setIsAdding(false)}
+                    disabled={saving} onClick={() => uploadOnly ? onClose() : setIsAdding(false)}
                     className="px-3.5 py-1.5 text-xs font-bold text-neutral-600 hover:text-neutral-900 rounded-lg hover:bg-neutral-200 cursor-pointer disabled:opacity-50"
                   >
                     Cancelar
@@ -645,12 +658,12 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     <span>{saving ? 'Guardando...' : 'Guardar Documento'}</span>
                   </button>
                 </div>
-              </form>
+              </fieldset></form>
             </div>
           )}
 
           {/* LIST OF CURRENT DOCUMENTS */}
-          <div className="space-y-2">
+          {!uploadOnly && <div className="space-y-2">
             <h3 className="text-xs font-black uppercase tracking-wider text-neutral-500">
               Documentos Existentes ({documents.length})
             </h3>
@@ -724,20 +737,31 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                     </div>
 
                     {/* Actions: Reorder, Edit, View, Delete */}
-                    <div className="flex items-center gap-1 self-end sm:self-center">
+                    <div className="flex flex-wrap items-center gap-1 self-end sm:self-center">
+                      {isDocPdf && <label className="relative min-h-11 px-2 inline-flex items-center text-xs text-[#123E59] underline cursor-pointer">
+                        Reemplazar PDF
+                        <input type="file" accept=".pdf,application/pdf" aria-label={`Reemplazar PDF ${doc.name}`} disabled={saving} className="absolute inset-0 opacity-0 w-full cursor-pointer" onChange={e => {
+                          const file = e.target.files?.[0]; e.target.value = '';
+                          if (!file) return;
+                          if ((!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') || !file.size || file.size > 25 * 1024 * 1024) { setFormError('Seleccioná un PDF con contenido de hasta 25 MB.'); return; }
+                          if (!window.confirm(`¿Reemplazar el PDF ${doc.name}? Los datos estructurados no se modifican.`)) return;
+                          setSaving(true); setFormError('');
+                          void updateDocument(doc.id, { mimeType: 'application/pdf' }, file).catch(error => setFormError(error.message)).finally(() => setSaving(false));
+                        }} />
+                      </label>}
                       <button
                         type="button"
                         onClick={() => runAction(reorderDocument(doc.id, 'up'))}
-                        title="Subir orden"
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
+                        aria-label={`Subir orden ${doc.name}`} title="Subir orden"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => runAction(reorderDocument(doc.id, 'down'))}
-                        title="Bajar orden"
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
+                        aria-label={`Bajar orden ${doc.name}`} title="Bajar orden"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
                       </button>
@@ -745,7 +769,7 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                         type="button"
                         onClick={() => setViewingDocumentId(doc.id)}
                         title="Ver documento en visor dedicado"
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
@@ -754,8 +778,8 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                         onClick={() =>
                           setEditingDocId(isEditing ? null : doc.id)
                         }
-                        title="Editar datos"
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
+                        aria-label={`Editar datos ${doc.name}`} title="Editar datos"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-neutral-500 hover:text-neutral-900 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -767,8 +791,8 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                           setDeleteError('');
                           setStorageWarning('');
                         }}
-                        title="Eliminar documento"
-                        className="p-1.5 text-red-500 hover:text-red-700 rounded hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={`Eliminar documento ${doc.name}`} title="Eliminar documento"
+                        className="min-h-11 min-w-11 flex items-center justify-center p-1.5 text-red-500 hover:text-red-700 rounded hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -777,19 +801,19 @@ export const DocumentManagerModal: React.FC<DocumentManagerModalProps> = ({
                 );
               })
             )}
-          </div>
+          </div>}
         </div>
 
         {/* Footer */}
-        <div className="pt-4 border-t border-neutral-100 flex justify-end shrink-0">
+        {!embedded && <div className="pt-4 border-t border-neutral-100 flex justify-end shrink-0">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => { if (!saving) onClose(); }} disabled={saving}
             className="px-5 py-2 text-xs font-bold text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg cursor-pointer"
           >
             Listo
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* Modal de confirmación de eliminación */}

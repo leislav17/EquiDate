@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
 import { ResultImport, ResultVersion, ResultFormat, publishedResults, reviewResultImport, resultPdf, resultColumnsForFormat } from '../../utils/results';
 import { ResultRows, ResultDetailsPanel } from '../public/ResultsView';
 
-export function ResultsManager({ eventId }: { eventId: string }) {
+export function ResultsManager({ eventId, classId, mode = 'all', onDirtyChange, onBusyChange }: { eventId: string; classId?: string; mode?: 'all' | 'import' | 'manage'; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) {
   const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, resultHeads, resultVersions, resultsError, importResults, unpublishResults } = useEquestrian();
   const [text, setText] = useState('');
   const [format, setFormat] = useState<ResultFormat>('single');
@@ -15,6 +15,8 @@ export function ResultsManager({ eventId }: { eventId: string }) {
   const [message, setMessage] = useState('');
   const [history, setHistory] = useState<ResultVersion[]>([]);
   const [historyClass, setHistoryClass] = useState('');
+  useEffect(() => { onDirtyChange?.(Boolean(text.trim())); }, [text, onDirtyChange]);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const targets = classes.filter(c => c.eventId === eventId).sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
   const label = (id: string) => {
     const c = targets.find(c => c.id === id);
@@ -40,17 +42,20 @@ export function ResultsManager({ eventId }: { eventId: string }) {
   }
   return <section className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-4">
     <h2 className="text-xl font-bold text-[#123E59]">Resultados</h2>
+    {mode !== 'manage' && <>
     <p className="text-sm text-neutral-600">Pasá el PDF y la plantilla de pruebas por ChatGPT. Revisá la extracción y resolvé los datos inciertos antes de importar el lote. No hace falta cargar los participantes uno por uno.</p>
     <p className="text-sm text-neutral-600">Los resultados conservan los puestos y valores del documento, incluidos empates. No modifican el contador del orden de ingreso. Cada reemplazo conserva una versión anterior y no modifica ningún PDF.</p>
     <p className="text-sm text-neutral-600">También podés agregar un PDF por prueba. Si hay resultado estructurado, el PDF queda disponible para descargar; si solo hay PDF, se abre como siempre.</p>
     <p className="text-sm text-neutral-600">Conservá la categoría, la definición, los tiempos permitidos u óptimos y la diferencia al óptimo cuando estén publicados. Los puestos en rojo se marcan como clasificados solo al comprobar el original. Las columnas y tablas del campeonato no se importan.</p>
+    </>}
     {resultsError && <p role="alert" className="text-red-700">{resultsError}</p>}
-    <div className="divide-y divide-neutral-100">{targets.map(c => {
+    {mode !== 'import' && <div className="divide-y divide-neutral-100">{targets.filter(c => !classId || c.id === classId).map(c => {
       const list = publishedResults(c.id, resultHeads, resultVersions);
       const head = resultHeads.find(h => h.class_id === c.id);
       const pdf = resultPdf(documents, c.id);
       return <div key={c.id} className="py-3 flex flex-wrap justify-between gap-2 text-sm">
         <div className="min-w-0 break-words"><p className="font-semibold">{label(c.id)}</p><p className="text-neutral-500">{list ? `${list.entries.length} participantes · ${list.source_name}` : 'Sin resultado estructurado publicado'}</p></div>
+        {list && <details className="w-full order-3 border rounded-lg p-3"><summary className="min-h-11 cursor-pointer text-[#123E59] font-semibold">Ver datos publicados</summary><div className="max-h-96 overflow-auto mt-2"><ResultDetailsPanel details={list.details} /><ResultRows entries={list.entries} columns={list.columns} /></div></details>}
         <div className="flex flex-wrap gap-3">
           <label className={`relative inline-flex items-center min-h-11 text-[#123E59] underline rounded focus-within:ring-2 focus-within:ring-[#123E59] ${busy ? 'opacity-50' : 'cursor-pointer'}`}>
             {pdf ? 'Reemplazar PDF' : 'Agregar PDF'}
@@ -74,11 +79,12 @@ export function ResultsManager({ eventId }: { eventId: string }) {
           }}>Retirar publicación</button>}
         </div>
       </div>;
-    })}</div>
+    })}</div>}
     {historyClass && <div className="border border-neutral-200 rounded-lg p-3 space-y-2"><h3 className="font-semibold">Versiones · {label(historyClass)}</h3><p className="text-xs text-neutral-500">Hasta 100 versiones recientes. Restaurar crea una nueva versión después de revisarla.</p>
       {!history.length && <p className="text-sm">Todavía no hay versiones.</p>}
       {history.map(v => <div key={v.id} className="flex flex-wrap gap-2 justify-between text-sm"><span>{new Date(v.created_at).toLocaleString('es-AR')} · {v.entries.length} participantes · {v.source_name}</span><button disabled={busy} className="underline min-h-11 text-[#123E59]" onClick={() => { const c = targets.find(c => c.id === v.class_id)!; changeText(JSON.stringify([{ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null, sourceName: v.source_name, columns: v.columns, details: v.details ?? {}, reviewed: true, uncertainties: [], entries: v.entries }], null, 2)); }}>Preparar restauración</button></div>)}
     </div>}
+    {(mode !== 'manage' || Boolean(text)) && <>
     <label className="block text-sm font-semibold">Formato de la plantilla<select className="block min-h-11 mt-2 rounded-lg border border-neutral-300 px-3 bg-white max-w-full" value={format} disabled={busy} onChange={e => setFormat(e.target.value as ResultFormat)}><option value="single">Un recorrido · Faltas y tiempo</option><option value="optimum">Tiempo óptimo · Faltas, tiempo y diferencia</option><option value="two_phases">Dos fases · Desglose de faltas y tiempos</option><option value="jump_off">Recorrido y desempate</option><option value="two_rounds">Doble recorrido</option></select></label>
     <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={detailedFaults} disabled={busy} onChange={e => setDetailedFaults(e.target.checked)} />El documento separa faltas de obstáculos y de tiempo</label>
     <p className="text-sm text-neutral-500">Si no separa las faltas, desmarcá la opción: se mostrará el número informado, sin paréntesis ni suma. Cada prueba conserva las fases y valores de su documento; los datos faltantes quedan en blanco.</p>
@@ -91,6 +97,7 @@ export function ResultsManager({ eventId }: { eventId: string }) {
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />Verifiqué todas las filas contra el PDF original, la asociación de cada prueba y los reemplazos indicados, incluidos los listados vacíos.</label>
       <button disabled={busy || !confirmed || !!resultsError} className="min-h-11 px-4 rounded-lg bg-[#123E59] text-white font-semibold disabled:opacity-50" onClick={() => void run(async () => { await importResults(preview); setPreview(null); setText(''); setConfirmed(false); setHistory([]); setHistoryClass(''); setMessage('Lote publicado. Versiones anteriores y PDFs conservados.'); })}>{busy ? 'Guardando…' : 'Publicar lote revisado'}</button>
     </div>}
+    </>}
     {message && <p role="status" className="text-sm font-semibold break-words">{message}</p>}
   </section>;
 }

@@ -37,7 +37,7 @@ export const Header: React.FC = () => {
       </button>}
     </div>
     <dialog id="main-menu" ref={dialog} aria-labelledby="menu-title" onCancel={() => setOpen(false)} onClose={() => setOpen(false)} onClick={e => { if (e.target === dialog.current) setOpen(false); }} className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-black/40 p-0 backdrop:bg-transparent text-neutral-900">
-      <div className="h-full w-[min(85vw,340px)] bg-[#123E59] text-white p-5 shadow-xl">
+      <div className="h-full w-[min(85vw,340px)] bg-[#123E59] text-white p-5 shadow-xl overflow-y-auto">
         <div className="relative flex justify-center items-center pb-5 border-b-2 border-[#A61E4D]">
           <h2 id="menu-title" className="sr-only">Menú de EquiDate</h2>
           <svg viewBox="630 761 4075 3618" className="w-20 h-20" role="img" aria-label="EquiDate">
@@ -46,10 +46,11 @@ export const Header: React.FC = () => {
           <button aria-label="Cerrar menú" onClick={() => setOpen(false)} className="absolute right-0 top-0 min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10"><X /></button>
         </div>
         <nav aria-label="Menú principal" className="mt-6 flex flex-col gap-2">
+          <p className="px-3 text-xs uppercase tracking-wider text-white/60">Público</p>
           <button onClick={() => go('/')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Inicio</button>
           <button onClick={() => go('/buscar/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Buscar jinetes</button>
           <button onClick={() => go('/informacion-util')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Información útil</button>
-          {isAdmin && <><button onClick={() => go('/admin')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Panel de administración</button><button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button><button onClick={() => { void logoutAdmin().then(() => setOpen(false)).catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Cerrar sesión</button></>}
+          {isAdmin && <><p className="px-3 mt-4 pt-4 border-t border-white/20 text-xs uppercase tracking-wider text-white/60">Administración</p><button onClick={() => go('/admin')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Panel de administración</button><button onClick={() => go('/admin/concursos')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Gestionar concursos</button><button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button><button onClick={() => go('/admin/informacion-util')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Gestionar información útil</button><button onClick={() => { void logoutAdmin().then(() => setOpen(false)).catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Cerrar sesión</button></>}
         </nav>
       </div>
     </dialog>

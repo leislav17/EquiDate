@@ -12,12 +12,6 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  Calendar,
-  Layers,
-  Files,
-  Video,
-  Info,
-  CheckCircle,
   AlertCircle
 } from 'lucide-react';
 
@@ -149,17 +143,17 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
   const isPublished = event?.status === 'published';
 
-  const tabs: Array<{ id: AdminTab; label: string; icon: React.FC<{ className?: string }> }> = [
-    { id: 'general', label: 'Información general', icon: Info },
-    { id: 'info', label: 'Información importante', icon: Calendar },
-    { id: 'schedule', label: 'Jornadas y pruebas', icon: Layers },
-    { id: 'documents', label: 'Documentos', icon: Files },
-    { id: 'transmission', label: 'Transmisión', icon: Video },
+  const tabs: Array<{ id: AdminTab; label: string }> = [
+    { id: 'general', label: 'Información general' },
+    { id: 'info', label: 'Información importante' },
+    { id: 'schedule', label: 'Jornadas y pruebas' },
+    { id: 'documents', label: 'Documentos' },
+    { id: 'transmission', label: 'Transmisión' },
   ];
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-64px)] pb-16">
-      <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
         {/* ======================================================== */}
         {/* ENCABEZADO DEDICADO DEL CONCURSO                         */}
         {/* ======================================================== */}
@@ -240,19 +234,14 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
           </div>
         </div>
 
-        <div className={isNew ? '' : 'grid lg:grid-cols-[220px_minmax(0,1fr)] gap-4 items-start'}>
+        <div className="space-y-4">
           {!isNew && <>
-            <label className="lg:hidden block text-sm font-semibold text-[#123E59]">Sección del concurso
+            <label className="block text-sm font-semibold text-[#123E59]">Sección del concurso
               <select disabled={isWorking} aria-label="Sección del concurso" value={activeTab} onChange={e => setActiveTab(e.target.value as AdminTab)} className="mt-2 w-full min-h-11 p-3 bg-white border border-neutral-300 rounded-xl">
                 {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
               </select>
             </label>
-            <nav aria-label="Secciones del concurso" className="hidden lg:flex flex-col gap-2 sticky top-20">
-              {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" disabled={isWorking} onClick={() => setActiveTab(id)} aria-current={activeTab === id ? 'page' : undefined}
-                className={`flex items-center gap-2 rounded-xl px-3 min-h-12 text-sm font-bold text-left ${activeTab === id ? 'bg-[#123E59] text-white' : 'bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-100'}`}>
-                <Icon className="w-4 h-4 shrink-0" />{label}
-              </button>)}
-            </nav>
+
           </>}
           <div className="min-w-0">
           {activeTab === 'general' && (

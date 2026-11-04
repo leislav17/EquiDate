@@ -175,7 +175,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-6">
         {errorMessage && (
           <div role="alert" className="p-3.5 bg-red-50 border border-red-200 text-red-800 text-sm font-semibold rounded-xl">

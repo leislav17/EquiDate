@@ -5,10 +5,13 @@ import { riderDirectory, riderParticipations, searchRiders, suggestRiderAssociat
 import type { ResultEntry, ResultVersion } from '../../utils/results';
 import { ResultDetailsPanel, ResultRows } from './ResultsView';
 import { eventPath } from '../../utils/navigation';
+import { sessionDataScope } from '../../utils/navigationSession';
+import { RiderHistory } from '../admin/RiderHistory';
 import { ChevronDown } from 'lucide-react';
 
 export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const data = useEquestrian();
+  const associationScope = sessionDataScope(data.session);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [associations, setAssociations] = useState<RiderAssociation[]>([]);
@@ -18,6 +21,8 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const [checked, setChecked] = useState<string[]>([]);
   const [reviewSources, setReviewSources] = useState<string[]>([]);
   const [reason, setReason] = useState('');
+  const [chosenName, setChosenName] = useState('');
+  const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let current = true;
@@ -25,7 +30,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
     void (async () => {
       const rows: RiderAssociation[] = [];
       for (let offset = 0; ; offset += 500) {
-        const response = await supabase.from('rider_associations').select('source,identity').order('source').range(offset, offset + 499);
+        const response = await supabase.from('rider_associations').select('source,identity,reason,canonical_name,name_variants').order('source').range(offset, offset + 499);
         if (!current) return;
         if (response.error) { setError('No pudimos verificar las asociaciones de jinetes. Reintentá para consultar datos seguros.'); setLoading(false); return; }
         rows.push(...response.data);
@@ -34,7 +39,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
       if (current) { setAssociations(rows); setLoading(false); setChecked([]); setReviewSources([]); }
     })().catch(() => { if (current) { setError('No pudimos cargar el buscador. Reintentá.'); setLoading(false); } });
     return () => { current = false; };
-  }, [reload, data.session]);
+  }, [reload, associationScope]);
   const directory = useMemo(() => riderDirectory(data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations), [data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations]);
   const matches = searchRiders(directory, query);
   const suggestions = useMemo(() => admin ? suggestRiderAssociations(directory) : [], [admin, directory]);
@@ -45,15 +50,28 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const participations = candidate ? riderParticipations(candidate) : [];
   const events = data.events.filter(e => participations.some(p => data.classes.some(c => c.id === p.classId && c.eventId === e.id))).sort((a,b) => b.startDate.localeCompare(a.startDate));
   const failure = error || data.dataError || data.startListsError || data.resultsError || data.scheduleError;
-  const correct = async (reset = false) => {
-    if (!data.isAdmin || !checked.length || reason.trim().length < 3) return;
+  const selectedRecords = directory.flatMap(c => c.records).filter(r => checked.includes(r.source));
+  const names = [...new Set(selectedRecords.map(r => r.row.rider))];
+  const finalName = chosenName.trim() || names[0] || '';
+  const previewCandidate = { id: 'preview', name: finalName, records: selectedRecords.map(r => ({ ...r, identity: 'preview' })), horses: [], clubs: [] };
+  const previewParticipations = riderParticipations(previewCandidate);
+  const toggleGroup = (source: string, selected: boolean) => {
+    const group = directory.find(c => c.records.some(r => r.source === source));
+    const sources = group?.records.map(r => r.source) || [source];
+    setChecked(v => selected ? [...new Set([...v,...sources])] : v.filter(s => !sources.includes(s)));
+  };
+  useEffect(() => { setPreview(false); }, [checked, chosenName, reason]);
+  const correct = async () => {
+    if (!data.isAdmin || !checked.length || reason.trim().length < 3 || !finalName || !preview) return;
     setBusy(true);
     try {
-      const identity = crypto.randomUUID();
-      const response = reset ? await supabase.from('rider_associations').delete().in('source', checked) : await supabase.from('rider_associations').upsert(checked.map(source => ({ source, identity, reason: reason.trim() })));
+      const response = await supabase.rpc('merge_rider_associations', {
+        sources: checked, chosen_name: finalName, change_reason: reason.trim(),
+        expected_rows: associations.filter(a => checked.includes(a.source)).sort((a,b) => a.source.localeCompare(b.source))
+      });
       if (response.error) throw response.error;
-      setSelected(null); setReason(''); setReload(n => n + 1);
-    } catch { setError('No pudimos guardar la corrección. Reintentá.'); }
+      setSelected(null); setReason(''); setChosenName(''); setPreview(false); setReload(n => n + 1);
+    } catch (e) { setError(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'No pudimos guardar la corrección. Reintentá.'); }
     finally { setBusy(false); }
   };
   return <section className="max-w-5xl mx-auto px-4 sm:px-6 py-8" aria-label="Buscador de jinetes">
@@ -68,7 +86,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
         <div className="mt-4 space-y-4">{visibleSuggestions.map(s => <article key={s.id} className="rounded-xl border border-neutral-200 bg-white p-4">
           <p className="font-semibold text-[#A61E4D]">{s.reasons.join(' · ')}</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">{s.candidates.map(c => <div key={c.id} className="rounded-lg bg-neutral-50 p-3"><h3 className="font-bold text-[#123E59]">{c.name}</h3><p className="text-sm mt-1">{c.horses.join(' · ') || 'Caballo no informado'}</p><p className="text-sm text-neutral-500">{c.clubs.join(' · ') || 'Club no informado'}</p><p className="text-xs mt-1 text-neutral-500">{new Set(c.records.map(r => data.classes.find(cls => cls.id === r.classId)?.eventId)).size} concursos · {c.records.length} registros{c.id.startsWith('manual:') ? ' · Asociación confirmada' : ''}</p></div>)}</div>
-          <button disabled={busy} onClick={() => { const sources = s.candidates.flatMap(c => c.records.map(r => r.source)); setReviewSources(sources); setChecked(sources); setReason(s.reasons.join(' · ')); }} className="min-h-11 mt-3 px-4 rounded-lg border border-[#123E59] text-[#123E59] font-semibold">Revisar asociación</button>
+          <button disabled={busy} onClick={() => { const sources = s.candidates.flatMap(c => c.records.map(r => r.source)); setReviewSources(sources); setChecked(sources); setChosenName(''); setReason(s.reasons.join(' · ')); }} className="min-h-11 mt-3 px-4 rounded-lg border border-[#123E59] text-[#123E59] font-semibold">Revisar asociación</button>
         </article>)}</div>
       </section> : !query.trim() ? <p className="mt-8 text-neutral-500">Escribí para encontrar jinetes.</p> : !candidate ? <div className="mt-6">
         <p role="status">{matches.length ? `${matches.length} coincidencias. Seleccioná el jinete correcto.` : 'No hay coincidencias en los datos publicados.'}</p>
@@ -97,13 +115,20 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
         </details>)}
       </div>}
       {admin && data.isAdmin && (!!matches.length || !!reviewSources.length || !!checked.length) && <section id="rider-association-review" className="mt-8 border rounded-xl p-4 bg-white scroll-mt-20">
-        <h2 className="font-bold">Corregir asociaciones</h2><p className="text-sm mt-2">Marcá todos los registros que sabés que son de la misma persona. Para separarlos del grupo provisional, marcá solo los de esa persona y guardá una nueva asociación. Esto no modifica los PDFs ni vincula actuaciones diferentes.</p>
+        <h2 className="font-bold">Corregir asociaciones</h2><p className="text-sm mt-2">Seleccioná los grupos que corresponden a la misma persona. Cada selección incluye todos los registros del grupo. Los datos originales se conservan.</p>
         <p role="status" className="mt-3 font-semibold">{checked.length} registros seleccionados</p>
-        <div className="max-h-96 overflow-y-auto mt-3">{reviewRecords.map(r => { const cls = data.classes.find(c => c.id === r.classId)!; return <label key={r.source} className="flex gap-3 py-3 border-t text-sm"><input type="checkbox" checked={checked.includes(r.source)} onChange={e => setChecked(v => e.target.checked ? [...v, r.source] : v.filter(s => s !== r.source))} /><span>{r.row.rider} · {r.row.horse || 'Sin caballo'} · {r.row.club} · {data.events.find(e => e.id === cls.eventId)?.name} · {cls.date} · Prueba {cls.number} · {r.kind === 'start' ? 'Orden' : 'Resultado'} {r.row.position}</span></label>; })}</div>
+        <div className="max-h-96 overflow-y-auto mt-3">{reviewRecords.map(r => { const cls = data.classes.find(c => c.id === r.classId)!; return <label key={r.source} className="flex gap-3 py-3 border-t text-sm"><input type="checkbox" checked={checked.includes(r.source)} disabled={busy} onChange={e => toggleGroup(r.source, e.target.checked)} /><span>{r.row.rider} · {r.row.horse || 'Sin caballo'} · {r.row.club} · {data.events.find(e => e.id === cls.eventId)?.name} · {cls.date} · Prueba {cls.number} · {r.kind === 'start' ? 'Orden' : 'Resultado'} {r.row.position}</span></label>; })}</div>
+        <label className="block mt-3">Nombre definitivo<select disabled={busy} value={names.includes(chosenName) ? chosenName : ''} onChange={e => setChosenName(e.target.value)} className="block border rounded-lg min-h-11 px-3 w-full"><option value="">Elegir o escribir un nombre</option>{names.map(name => <option key={name}>{name}</option>)}</select><input disabled={busy} value={chosenName} placeholder={names[0] || 'Nombre corregido'} maxLength={150} onChange={e => setChosenName(e.target.value)} className="block mt-2 border rounded-lg min-h-11 px-3 w-full" /></label>
         <label className="block mt-3">Motivo de la corrección<input value={reason} maxLength={500} onChange={e => setReason(e.target.value)} className="block border rounded-lg px-3 min-h-11 w-full" /></label>
-        <button disabled={busy || !checked.length || reason.trim().length < 3} onClick={() => void correct()} className="min-h-11 px-3 mt-3 bg-[#123E59] text-white rounded-lg disabled:opacity-40">Asociar selección a una persona</button>
-        <button disabled={busy || !checked.length || reason.trim().length < 3} onClick={() => void correct(true)} className="min-h-11 px-3 mt-3 underline disabled:opacity-40">Restaurar agrupación provisional</button>
+        <button disabled={busy || !checked.length || reason.trim().length < 3} onClick={() => setPreview(true)} className="min-h-11 px-3 mt-3 bg-[#123E59] text-white rounded-lg disabled:opacity-40">Vista previa de la asociación</button>
+        {preview && <div role="region" aria-label="Vista previa de la asociación" className="mt-4 p-4 border rounded-xl bg-neutral-50">
+          <h3 className="font-bold text-[#123E59]">{finalName}</h3>
+          <p>{previewParticipations.length} participaciones · {new Set(selectedRecords.map(r => r.row.horse).filter(Boolean)).size} caballos · {new Set(selectedRecords.map(r => data.classes.find(c => c.id === r.classId)?.eventId)).size} concursos</p>
+          <ul className="my-3 space-y-2 max-h-80 overflow-y-auto text-sm">{previewParticipations.map(p => { const cls = data.classes.find(c => c.id === p.classId)!; const row = (p.start || p.result)!.row; return <li key={p.id}>{data.events.find(e => e.id === cls.eventId)?.name} · {cls.date} · Prueba {cls.number} · {row.horse || 'Sin caballo'} · {p.start ? 'Orden de ingreso' : ''}{p.start && p.result ? ' + ' : ''}{p.result ? 'Resultado' : ''}</li>; })}</ul>
+          <button disabled={busy} onClick={() => void correct()} className="min-h-11 px-4 bg-[#123E59] text-white rounded-lg disabled:opacity-40">Confirmar unificación</button>
+        </div>}
       </section>}
     </>}
+    {admin && data.isAdmin && <RiderHistory revision={reload} onChange={() => { setError(''); setReload(n => n + 1); }} />}
   </section>;
 }

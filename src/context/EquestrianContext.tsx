@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass, CompetitionArena, CompetitionStream } from '../types/equestrian';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
+import { sessionDataScope } from '../utils/navigationSession';
 import { Session } from '@supabase/supabase-js';
 import { documentAssociation, documentLabel, isGeneralDocumentType } from '../utils/documents';
 import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
@@ -63,6 +64,7 @@ interface EquestrianContextType {
 
   // Loading & sync state
   isLoading: boolean;
+  refreshError: string | null;
   isAuthLoading: boolean;
   isBackendConnected: boolean;
   refreshData: () => Promise<void>;
@@ -212,13 +214,30 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [activeViewerDoc, setActiveViewerDoc] = useState<DocumentItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const hasLoadedData = useRef(false);
+  const dataScope = useRef('anonymous');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const requestVersion = useRef(0);
   const previousDocumentRoute = useRef('');
   const isBackendConnected = isSupabaseConfigured();
-  const isAdmin = isBackendConnected && session?.user.app_metadata?.equidate_admin === true;
+  const [verifiedAdmin, setVerifiedAdmin] = useState(false);
+  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const isAdmin = isBackendConnected && !!session && verifiedAdmin && verifiedToken === session.access_token;
+  useEffect(() => {
+    let active = true;
+    setVerifiedAdmin(false);
+    if (!session) { setPermissionLoading(false); return; }
+    setPermissionLoading(true);
+    void (async () => {
+      const { data, error } = await supabase.rpc('equidate_is_admin');
+      if (active) { setVerifiedAdmin(!error && data === true); setVerifiedToken(session.access_token); setPermissionLoading(false); }
+    })().catch(() => { if (active) { setVerifiedAdmin(false); setVerifiedToken(session.access_token); setPermissionLoading(false); } });
+    return () => { active = false; };
+  }, [session]);
   const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
     () => resourceHash(readLocation()).startsWith('#document-') ? resourceHash(readLocation()).slice(10) : null
   );
@@ -254,12 +273,19 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      requestVersion.current += 1;
-      setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
+      const nextScope = sessionDataScope(currentSession);
+      if (nextScope !== dataScope.current) {
+        dataScope.current = nextScope;
+        requestVersion.current += 1;
+        hasLoadedData.current = false;
+        setIsLoading(true); setRefreshError(null);
+        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
+        setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
+        setAuthRevision(version => version + 1);
+      }
+      // SIGNED_IN can repeat on focus and TOKEN_REFRESHED must update auth without clearing the UI.
       setSession(currentSession);
-      setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
       setIsAuthLoading(false);
-      setAuthRevision(version => version + 1);
     });
     return () => { active = false; subscription.unsubscribe(); };
   }, [isBackendConnected]);
@@ -270,7 +296,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setIsLoading(false);
       return;
     }
-    setIsLoading(true); setDataError(null); setScheduleError(null); setArenaError(null); setStartListsError(null); setResultsError(null);
+    setIsLoading(!hasLoadedData.current); setRefreshError(null); setDataError(null); setScheduleError(null); setArenaError(null); setStartListsError(null); setResultsError(null);
     try {
       const [eventResponse, documentResponse, pageResponse] = await Promise.all([
         supabase.from('events').select('*').order('start_date'),
@@ -367,8 +393,9 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ]);
       if (version !== requestVersion.current) return;
       if (dayResponse.error || classResponse.error) {
-        setDays([]); setClasses([]);
-        setScheduleError('El cronograma no está disponible. Los documentos existentes siguen disponibles.');
+        if (!hasLoadedData.current) { setDays([]); setClasses([]); }
+        if (hasLoadedData.current) setRefreshError('No pudimos actualizar el cronograma. Se mantiene la información cargada.');
+        else setScheduleError('El cronograma no está disponible. Los documentos existentes siguen disponibles.');
       } else {
         setDays((dayResponse.data || []).map(day => ({
           id: day.id, eventId: day.event_id, date: day.event_date,
@@ -385,13 +412,16 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       // One joined query keeps the published pointer and its entries in the same snapshot.
       const loadedHeads: StartHead[] = [], loadedVersions: StartVersion[] = [];
+      let startsFailed = false, resultsFailed = false;
       for (let offset = 0; ; offset += 500) {
         const response = await supabase.from('start_lists')
           .select('*,version:start_list_versions!start_lists_class_id_version_id_fkey(*)')
           .order('class_id').range(offset, offset + 499);
         if (version !== requestVersion.current) return;
         if (response.error) {
-          setStartListsError('No pudimos cargar los listados estructurados. ' + response.error.message);
+          startsFailed = true;
+          if (hasLoadedData.current) setRefreshError('No pudimos actualizar los listados. Se mantiene la información cargada.');
+          else setStartListsError('No pudimos cargar los listados estructurados. ' + response.error.message);
           loadedHeads.length = 0; loadedVersions.length = 0; break;
         }
         for (const row of response.data || []) {
@@ -401,7 +431,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         if ((response.data?.length || 0) < 500) break;
       }
-      setStartHeads(loadedHeads); setStartVersions(loadedVersions);
+      if (!startsFailed || !hasLoadedData.current) { setStartHeads(loadedHeads); setStartVersions(loadedVersions); }
       const resultHeads: StartHead[] = [], resultVersions: ResultVersion[] = [];
       for (let offset = 0; ; offset += 500) {
         const response = await supabase.from('result_lists')
@@ -409,7 +439,9 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .order('class_id').range(offset, offset + 499);
         if (version !== requestVersion.current) return;
         if (response.error) {
-          setResultsError('No pudimos cargar los resultados estructurados. ' + response.error.message);
+          resultsFailed = true;
+          if (hasLoadedData.current) setRefreshError('No pudimos actualizar los resultados. Se mantiene la información cargada.');
+          else setResultsError('No pudimos cargar los resultados estructurados. ' + response.error.message);
           resultHeads.length = 0; resultVersions.length = 0; break;
         }
         for (const row of response.data || []) {
@@ -419,15 +451,16 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         if ((response.data?.length || 0) < 500) break;
       }
-      setResultHeads(resultHeads); setResultVersions(resultVersions);
+      if (!resultsFailed || !hasLoadedData.current) { setResultHeads(resultHeads); setResultVersions(resultVersions); }
       const [arenaResponse, streamResponse] = await Promise.all([
         supabase.from('competition_arenas').select('*').order('is_primary', { ascending: false }).order('name'),
         supabase.from('competition_streams').select('*'),
       ]);
       if (version !== requestVersion.current) return;
       if (arenaResponse.error || streamResponse.error) {
-        setArenas([]); setStreams([]);
-        setArenaError('La gestión de pistas y transmisiones no está disponible. Revisá la migración de pistas.');
+        if (!hasLoadedData.current) { setArenas([]); setStreams([]); }
+        if (hasLoadedData.current) setRefreshError('No pudimos actualizar las pistas y transmisiones. Se mantiene la información cargada.');
+        else setArenaError('La gestión de pistas y transmisiones no está disponible. Revisá la migración de pistas.');
       } else {
         setArenas((arenaResponse.data || []).map(arena => ({
           id: arena.id, eventId: arena.event_id, name: arena.name, isPrimary: arena.is_primary,
@@ -438,16 +471,21 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           arenaId: stream.arena_id, youtubeUrl: stream.youtube_url || '',
         })));
       }
+      hasLoadedData.current = true;
     } catch (error) {
       if (version !== requestVersion.current) return;
-      setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
-      setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
-      setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
+      if (hasLoadedData.current) {
+        setRefreshError('No pudimos actualizar los concursos. Se mantiene la información cargada. ' + errorMessage(error));
+      } else {
+        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
+        setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
+        setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
+      }
     } finally {
       if (version === requestVersion.current) setIsLoading(false);
     }
   }, [isBackendConnected]);
-  useEffect(() => { void refreshData(); }, [refreshData, session, authRevision]);
+  useEffect(() => { void refreshData(); }, [refreshData, authRevision]);
   const requireAdmin = () => {
     if (!isBackendConnected || !isAdmin) throw new Error('Necesitás una sesión de administrador válida.');
   };
@@ -456,7 +494,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      if (data.user?.app_metadata?.equidate_admin !== true) {
+      const permission = await supabase.rpc('equidate_is_admin');
+      if (permission.error || permission.data !== true) {
         await supabase.auth.signOut();
         return { success: false, error: 'Esta cuenta no tiene permisos de administración.' };
       }
@@ -1038,7 +1077,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     events, documents: namedDocuments, days, classes, arenas, streams, arenaError, saveArena, deleteArena, saveStream, dataError, scheduleError, saveClass, saveClasses, deleteClass, reorderClasses, reorderArenas,
     routeNotFound, routeLocation,
     activeYear, setActiveYear, selectedMonth, setSelectedMonth, selectedEventId, setSelectedEventId,
-    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, isAuthLoading,
+    activeView, setActiveView, session, isAdmin, loginAdmin, logoutAdmin, isLoading, refreshError, isAuthLoading: isAuthLoading || permissionLoading || (!!session && verifiedToken !== session.access_token),
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
     setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus, uploadEventImage,
     addDocument, updateDocument, deleteDocument, reorderDocument,

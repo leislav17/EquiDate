@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Download, Search } from 'lucide-react';
+import { ArrowLeft, Bell, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists';
 
@@ -38,7 +38,7 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>
         <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo, categoría o club" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo, categoría o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span>Orden</span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span className="flex items-center justify-start"><Bell size={18} className="text-white" aria-hidden="true" /><span className="sr-only">Orden de ingreso</span></span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
         <StartListRows entries={rows} />
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}

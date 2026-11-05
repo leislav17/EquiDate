@@ -4,26 +4,18 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import { formatDateRange } from '../../utils/dateUtils';
 import { GeneralInfoSection } from './sections/GeneralInfoSection';
 import { ScheduleSection } from './sections/ScheduleSection';
-import { DocumentsSection } from './sections/DocumentsSection';
+import { DocumentWorkspace } from './DocumentWorkspace';
 import { TransmissionSection } from './sections/TransmissionSection';
 import { ImportantInfoSection } from './sections/ImportantInfoSection';
-import { StartListManager } from './StartListManager';
-import { ResultsManager } from './ResultsManager';
 import {
   ArrowLeft,
   ExternalLink,
   Eye,
   EyeOff,
-  Calendar,
-  Layers,
-  Files,
-  Video,
-  Info,
-  CheckCircle,
   AlertCircle
 } from 'lucide-react';
 
-export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info' | 'start-lists' | 'results';
+export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info';
 
 interface AdminEventEditorProps {
   eventId: string | 'new';
@@ -52,8 +44,10 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
   const [activeTab, setActiveTabState] = useState<AdminTab>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab') as AdminTab | null;
-      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info', 'start-lists', 'results'].includes(tabParam)) {
+      if (eventId === 'new') return 'general';
+      const legacy = params.get('tab');
+      const tabParam = (legacy === 'start-lists' || legacy === 'results' ? 'documents' : legacy) as AdminTab | null;
+      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info'].includes(tabParam)) {
         return tabParam;
       }
     }
@@ -61,6 +55,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
   });
 
   const [isDirty, setIsDirty] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [toggleStatusBusy, setToggleStatusBusy] = useState(false);
@@ -127,6 +122,8 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
     }
   };
 
+  if (!isNew && !event && isLoading) return <p role="status" className="p-6">Cargando concurso…</p>;
+
   if (!isNew && !event && !isLoading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12 text-center">
@@ -146,39 +143,37 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
   const isPublished = event?.status === 'published';
 
-  const tabs: Array<{ id: AdminTab; label: string; icon: React.FC<{ className?: string }>; disabled?: boolean }> = [
-    { id: 'general', label: 'Información general', icon: Info },
-    { id: 'schedule', label: 'Jornadas y pruebas', icon: Layers, disabled: isNew },
-    { id: 'documents', label: 'Documentos', icon: Files, disabled: isNew },
-    { id: 'start-lists', label: 'Órdenes de ingreso', icon: Layers, disabled: isNew },
-    { id: 'results', label: 'Resultados', icon: Files, disabled: isNew },
-    { id: 'transmission', label: 'Transmisión', icon: Video, disabled: isNew },
-    { id: 'info', label: 'Información importante', icon: Calendar, disabled: isNew },
+  const tabs: Array<{ id: AdminTab; label: string }> = [
+    { id: 'general', label: 'Información general' },
+    { id: 'info', label: 'Información importante' },
+    { id: 'schedule', label: 'Jornadas y pruebas' },
+    { id: 'documents', label: 'Documentos' },
+    { id: 'transmission', label: 'Transmisión' },
   ];
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-64px)] pb-16">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
         {/* ======================================================== */}
         {/* ENCABEZADO DEDICADO DEL CONCURSO                         */}
         {/* ======================================================== */}
-        <div className="bg-white border border-neutral-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
-              onClick={handleBack}
+              disabled={isWorking} onClick={handleBack}
               className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[#123E59] hover:underline cursor-pointer group"
             >
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-              <span>← Volver a concursos</span>
+              <span>Volver a concursos</span>
             </button>
 
             {event && (
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handlePreviewPublic}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors cursor-pointer"
+                  disabled={isWorking || toggleStatusBusy || isDirty} onClick={handlePreviewPublic}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-11 text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-xl transition-colors cursor-pointer"
                   title="Ver en la vista pública"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -187,14 +182,14 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
                 <button
                   type="button"
-                  disabled={toggleStatusBusy}
+                  disabled={toggleStatusBusy || isDirty || isWorking}
                   onClick={handleTogglePublish}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-3 min-h-11 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                     isPublished
                       ? 'text-neutral-700 border-neutral-300 hover:bg-neutral-100'
                       : 'text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100'
                   }`}
-                  title={isPublished ? 'Pasar a borrador' : 'Publicar concurso'}
+                  title={isDirty ? 'Guardá los cambios antes de cambiar la publicación' : isPublished ? 'Pasar a borrador' : 'Publicar concurso'}
                 >
                   {isPublished ? (
                     <>
@@ -225,7 +220,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
               </span>
             </div>
 
-            <h1 className="font-display text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight leading-tight">
+            <h1 className="font-display text-xl sm:text-2xl font-black text-neutral-900 tracking-tight leading-tight">
               {event ? event.name : 'Crear Nuevo Concurso'}
             </h1>
 
@@ -239,37 +234,16 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
           </div>
         </div>
 
-        {/* ======================================================== */}
-        {/* NAVEGACIÓN POR PESTAÑAS RESPONSIVE                       */}
-        {/* ======================================================== */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none border-b border-neutral-200">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+        <div className="space-y-4">
+          {!isNew && <>
+            <label className="block text-sm font-semibold text-[#123E59]">Sección del concurso
+              <select disabled={isWorking} aria-label="Sección del concurso" value={activeTab} onChange={e => setActiveTab(e.target.value as AdminTab)} className="mt-2 w-full min-h-11 p-3 bg-white border border-neutral-300 rounded-xl">
+                {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+              </select>
+            </label>
 
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                disabled={tab.disabled}
-                onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isActive
-                    ? 'bg-[#123E59] text-white shadow-xs'
-                    : 'bg-white text-neutral-700 hover:bg-neutral-100 border border-neutral-200/80'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ======================================================== */}
-        {/* CONTENIDO DE LA PESTAÑA SELECCIONADA                     */}
-        {/* ======================================================== */}
-        <div>
+          </>}
+          <div className="min-w-0">
           {activeTab === 'general' && (
             <GeneralInfoSection
               event={event}
@@ -284,7 +258,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
           )}
 
           {activeTab === 'documents' && event && (
-            <DocumentsSection event={event} />
+            <DocumentWorkspace key={event.id} event={event} onDirtyChange={setIsDirty} onBusyChange={setIsWorking} />
           )}
 
           {activeTab === 'transmission' && event && (
@@ -294,8 +268,8 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
           {activeTab === 'info' && event && (
             <ImportantInfoSection event={event} onDirtyChange={setIsDirty} />
           )}
-          {activeTab === 'start-lists' && event && <StartListManager key={event.id} eventId={event.id} />}
-          {activeTab === 'results' && event && <ResultsManager key={event.id} eventId={event.id} />}
+
+          </div>
         </div>
       </div>
 
@@ -323,7 +297,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
                   setShowUnsavedPrompt(false);
                   setPendingAction(null);
                 }}
-                className="px-3 py-1.5 text-xs font-bold text-neutral-600 hover:text-neutral-900 cursor-pointer"
+                className="px-3 min-h-11 text-xs font-bold text-neutral-600 hover:text-neutral-900 cursor-pointer"
               >
                 Seguir editando
               </button>

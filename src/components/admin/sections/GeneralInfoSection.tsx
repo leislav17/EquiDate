@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EquestrianEvent, EventStatus } from '../../../types/equestrian';
+import { EquestrianEvent } from '../../../types/equestrian';
 import { useEquestrian } from '../../../context/EquestrianContext';
 import { Upload, Trash2, Image as ImageIcon, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { eventPath } from '../../../utils/navigation';
@@ -26,7 +26,6 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   const [imageUrl, setImageUrl] = useState(event?.imageUrl || '');
   const [startDate, setStartDate] = useState(event?.startDate || '2026-10-24');
   const [endDate, setEndDate] = useState(event?.endDate || '2026-10-25');
-  const [status, setStatus] = useState<EventStatus>(event?.status || 'published');
 
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -49,7 +48,6 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
       setImageUrl(event.imageUrl || '');
       setStartDate(event.startDate);
       setEndDate(event.endDate);
-      setStatus(event.status);
     }
     setErrorMessage('');
     setSuccessMessage('');
@@ -68,10 +66,9 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
       (city || '') !== (event.city || '') ||
       (imageUrl || '') !== (event.imageUrl || '') ||
       startDate !== event.startDate ||
-      endDate !== event.endDate ||
-      status !== event.status;
+      endDate !== event.endDate;
     onDirtyChange?.(isDirty);
-  }, [name, venue, city, imageUrl, startDate, endDate, status, slug, event, onDirtyChange]);
+  }, [name, venue, city, imageUrl, startDate, endDate, slug, event, onDirtyChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +102,6 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
           imageUrl: imageUrl.trim() || undefined,
           startDate,
           endDate,
-          status,
         });
         setSuccessMessage('Los datos del concurso se guardaron correctamente.');
         onDirtyChange?.(false);
@@ -119,7 +115,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
           imageUrl: imageUrl.trim() || undefined,
           startDate,
           endDate,
-          status,
+          status: 'draft',
         });
         setSuccessMessage('Concurso creado exitosamente.');
         onDirtyChange?.(false);
@@ -179,7 +175,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-6">
         {errorMessage && (
           <div role="alert" className="p-3.5 bg-red-50 border border-red-200 text-red-800 text-sm font-semibold rounded-xl">
@@ -280,38 +276,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1">
-              Estado de Publicación *
-            </label>
-            <div className="grid grid-cols-2 gap-3 max-w-sm">
-              <button
-                type="button"
-                onClick={() => setStatus('published')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  status === 'published'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                    : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
-                }`}
-              >
-                PUBLICADO
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatus('draft')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  status === 'draft'
-                    ? 'bg-neutral-800 text-white border-neutral-800 shadow-xs'
-                    : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50'
-                }`}
-              >
-                BORRADOR
-              </button>
-            </div>
-            <p className="text-xs text-neutral-500 mt-1.5">
-              Los concursos en borrador solo son visibles para administradores y no se muestran en la página pública.
-            </p>
-          </div>
+          {!event && <p className="text-sm text-neutral-500">El concurso se creará como borrador. Podrás publicarlo desde su encabezado cuando esté listo.</p>}
         </div>
 
         {/* 2. Imagen de portada */}

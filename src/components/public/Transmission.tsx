@@ -4,6 +4,7 @@ import { CompetitionDay } from '../../types/equestrian';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { formatDayHeader } from '../../utils/dateUtils';
 import { getYouTubeId, transmissionLabel } from '../../utils/schedule';
+import { useSessionListSelection } from '../../hooks/useNavigationSession';
 import { DayProgram } from './DayProgram';
 import { StartListView } from './StartListView';
 import { DocumentViewer } from '../viewer/DocumentViewer';
@@ -32,10 +33,14 @@ export function TransmissionButton({ day }: { day: CompetitionDay }) {
 
 function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: string; youtubeUrl: string }) {
   const { arenas, classes, documents, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
-  const [selectedList, setSelectedList] = useState<{ kind: 'structured' | 'document'; id: string } | null>(null);
+  const [selectedList, setSelectedList] = useSessionListSelection(`event:${day.eventId}:player:${day.id}:${arenaId || 'primary'}`, selection => selection.kind === 'structured'
+    ? classes.some(c => c.id === selection.id && c.eventId === day.eventId && c.date === day.date && (!arenaId || c.arenaId === arenaId))
+    : documents.some(d => d.id === selection.id && d.eventId === day.eventId && d.eventDate === day.date));
+  const restoredSelection = useRef(true);
   const videoRef = useRef<HTMLDivElement>(null);
   const listsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (restoredSelection.current) { restoredSelection.current = false; return; }
     // Keep the selected list below the pinned player without restarting playback.
     if (selectedList && listsRef.current) {
       if (window.matchMedia('(min-width: 1024px)').matches) {

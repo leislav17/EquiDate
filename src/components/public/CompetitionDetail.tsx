@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import {
   formatFullDateRange,
@@ -21,6 +21,7 @@ import {
 import { DayProgram } from './DayProgram';
 import { TransmissionButton } from './Transmission';
 import { DocumentItem } from '../../types/equestrian';
+import { useCompetitionDisclosure } from '../../hooks/useNavigationSession';
 import { renderRichText } from '../../utils/richText';
 
 export const CompetitionDetail: React.FC = () => {
@@ -55,10 +56,6 @@ export const CompetitionDetail: React.FC = () => {
     return allDocs.filter((d) => d.type === 'OTHER');
   }, [allDocs]);
 
-  // Accordion states for days: all days start collapsed by default
-  const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
-
   // Generate days between startDate and endDate
   const days = useMemo(() => {
     if (!event) return [];
@@ -82,10 +79,8 @@ export const CompetitionDetail: React.FC = () => {
     });
   }, [event, allDocs, classes, competitionDays, streams]);
 
-  // When changing or entering a competition, ensure all days remain collapsed by default
-  React.useEffect(() => {
-    setOpenDays({});
-  }, [selectedEventId]);
+  const dayId = (date: string) => competitionDays.find(day => day.eventId === selectedEventId && day.date === date)?.id || `${selectedEventId}:${date}`;
+  const { openDays, isInfoOpen, toggleDay, toggleInfo } = useCompetitionDisclosure(selectedEventId, days.map(day => dayId(day.dateStr)));
 
   if (!event) {
     return (
@@ -104,13 +99,6 @@ export const CompetitionDetail: React.FC = () => {
 
   const dateRangeStr = formatFullDateRange(event.startDate, event.endDate);
   const temporalStatus = getEventTemporalStatus(event.startDate, event.endDate);
-
-  const toggleDayAccordion = (dateStr: string) => {
-    setOpenDays((prev) => ({
-      ...prev,
-      [dateStr]: !prev[dateStr]
-    }));
-  };
 
   const handleOpenDoc = (doc: DocumentItem) => {
     setViewingDocumentId(doc.id);
@@ -176,7 +164,7 @@ export const CompetitionDetail: React.FC = () => {
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => setIsInfoOpen(prev => !prev)}
+                onClick={toggleInfo}
                 aria-expanded={isInfoOpen}
                 className="w-full px-5 py-4 flex items-center justify-between bg-[#123E59] hover:bg-[#0e3247] text-white rounded-2xl cursor-pointer select-none transition-all active:scale-[0.99] shadow-xs min-h-[56px] group"
               >
@@ -296,7 +284,7 @@ export const CompetitionDetail: React.FC = () => {
           {/* 2. AUTOMATIC ACCORDION FOR EACH DAY                     */}
           {/* ======================================================== */}
           {days.map((day) => {
-            const isOpen = !!openDays[day.dateStr];
+            const isOpen = openDays.includes(dayId(day.dateStr));
             const isToday = day.dateStr === argentinaTodayStr;
 
             return (
@@ -307,7 +295,7 @@ export const CompetitionDetail: React.FC = () => {
                 {/* Day Accordion Header */}
                 <button
                   type="button"
-                  onClick={() => toggleDayAccordion(day.dateStr)}
+                  onClick={() => toggleDay(dayId(day.dateStr))}
                   aria-expanded={isOpen}
                   className={`w-full px-5 py-4 flex items-center justify-between text-left cursor-pointer select-none transition-colors min-h-[56px] ${
                     isOpen ? 'bg-neutral-100 text-neutral-900' : 'bg-white hover:bg-neutral-50 text-neutral-800'

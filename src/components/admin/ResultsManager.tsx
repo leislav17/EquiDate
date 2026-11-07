@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { eventDiscipline } from '../../utils/disciplines';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
 import { ResultImport, ResultVersion, ResultFormat, publishedResults, reviewResultImport, resultPdf, resultColumnsForFormat } from '../../utils/results';
 import { ResultRows, ResultDetailsPanel } from '../public/ResultsView';
 
 export function ResultsManager({ eventId, classId, mode = 'all', onDirtyChange, onBusyChange }: { eventId: string; classId?: string; mode?: 'all' | 'import' | 'manage'; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) {
-  const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, resultHeads, resultVersions, resultsError, importResults, unpublishResults } = useEquestrian();
+  const { events, classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, resultHeads, resultVersions, resultsError, importResults, unpublishResults } = useEquestrian();
   const [text, setText] = useState('');
   const [format, setFormat] = useState<ResultFormat>('single');
   const [detailedFaults, setDetailedFaults] = useState(true);
@@ -17,6 +18,8 @@ export function ResultsManager({ eventId, classId, mode = 'all', onDirtyChange, 
   const [historyClass, setHistoryClass] = useState('');
   useEffect(() => { onDirtyChange?.(Boolean(text.trim())); }, [text, onDirtyChange]);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  const discipline = eventDiscipline(events.find(event => event.id === eventId));
+  const dressage = discipline === 'dressage';
   const targets = classes.filter(c => c.eventId === eventId).sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
   const label = (id: string) => {
     const c = targets.find(c => c.id === id);
@@ -36,7 +39,7 @@ export function ResultsManager({ eventId, classId, mode = 'all', onDirtyChange, 
   function exportTemplate() {
     const template = targets.map(c => ({ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number,
       expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null,
-      columns: resultColumnsForFormat(format, detailedFaults), details: { definition: '', height: '', allowedTime: '', optimalTime: '', rounds: [] }, sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original. Omitir columnas del campeonato. Verificar puestos rojos y tiempos de referencia.'], entries: [] }));
+      columns: resultColumnsForFormat(dressage ? 'dressage' : format, detailedFaults), details: dressage ? {} : { definition: '', height: '', allowedTime: '', optimalTime: '', rounds: [] }, sourceName: '', reviewed: false, uncertainties: [dressage ? 'Copiar puesto y porcentaje total del original. Usar values.total_percentage, conservar decimales y empates.' : 'Completar y revisar contra el PDF original. Omitir columnas del campeonato. Verificar puestos rojos y tiempos de referencia.'], entries: [] }));
     const url = URL.createObjectURL(new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `pruebas-${eventId}.json`; link.click(); URL.revokeObjectURL(url);
   }
@@ -85,13 +88,15 @@ export function ResultsManager({ eventId, classId, mode = 'all', onDirtyChange, 
       {history.map(v => <div key={v.id} className="flex flex-wrap gap-2 justify-between text-sm"><span>{new Date(v.created_at).toLocaleString('es-AR')} · {v.entries.length} participantes · {v.source_name}</span><button disabled={busy} className="underline min-h-11 text-[#123E59]" onClick={() => { const c = targets.find(c => c.id === v.class_id)!; changeText(JSON.stringify([{ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: resultHeads.find(h => h.class_id === c.id)?.revision ?? null, sourceName: v.source_name, columns: v.columns, details: v.details ?? {}, reviewed: true, uncertainties: [], entries: v.entries }], null, 2)); }}>Preparar restauración</button></div>)}
     </div>}
     {(mode !== 'manage' || Boolean(text)) && <>
+    {dressage ? <p className="text-sm text-neutral-600">La plantilla básica de Adiestramiento conserva el puesto y el porcentaje total de cada binomio tal como figuran en el original.</p> : <>
     <label className="block text-sm font-semibold">Formato de la plantilla<select className="block min-h-11 mt-2 rounded-lg border border-neutral-300 px-3 bg-white max-w-full" value={format} disabled={busy} onChange={e => setFormat(e.target.value as ResultFormat)}><option value="single">Un recorrido · Faltas y tiempo</option><option value="optimum">Tiempo óptimo · Faltas, tiempo y diferencia</option><option value="two_phases">Dos fases · Desglose de faltas y tiempos</option><option value="jump_off">Recorrido y desempate</option><option value="two_rounds">Doble recorrido</option></select></label>
     <label className="flex items-center gap-2 min-h-11 text-sm"><input type="checkbox" checked={detailedFaults} disabled={busy} onChange={e => setDetailedFaults(e.target.checked)} />El documento separa faltas de obstáculos y de tiempo</label>
     <p className="text-sm text-neutral-500">Si no separa las faltas, desmarcá la opción: se mostrará el número informado, sin paréntesis ni suma. Cada prueba conserva las fases y valores de su documento; los datos faltantes quedan en blanco.</p>
+    </>}
     <button className="min-h-11 underline text-[#123E59] font-semibold" onClick={exportTemplate} disabled={!targets.length || busy}>Descargar plantilla de pruebas para ChatGPT</button>
     <label className="block text-sm font-semibold">Lote revisado (JSON)<textarea className="block w-full min-h-48 mt-2 rounded-lg border border-neutral-300 p-3 text-xs font-mono" value={text} disabled={busy} onChange={e => changeText(e.target.value)} placeholder="Pegá el lote extraído y revisado con ChatGPT" /></label>
     <label className="block text-sm">O seleccioná el archivo JSON<input type="file" accept=".json,application/json" disabled={busy} className="block max-w-full my-2" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 10 * 1024 * 1024) { setMessage('El lote supera 10 MB.'); return; } changeText(await file.text()); e.target.value = ''; }} /></label>
-    <button disabled={busy || !!resultsError} className="min-h-11 px-4 rounded-lg border border-neutral-300 font-semibold disabled:opacity-50" onClick={() => { try { setPreview(reviewResultImport(JSON.parse(text), classes, resultHeads, eventId)); setConfirmed(false); setMessage(''); } catch (error) { setPreview(null); setMessage((error as Error).message); } }}>Revisar importación</button>
+    <button disabled={busy || !!resultsError} className="min-h-11 px-4 rounded-lg border border-neutral-300 font-semibold disabled:opacity-50" onClick={() => { try { setPreview(reviewResultImport(JSON.parse(text), classes, resultHeads, eventId, discipline)); setConfirmed(false); setMessage(''); } catch (error) { setPreview(null); setMessage((error as Error).message); } }}>Revisar importación</button>
     {preview && <div className="space-y-4">
       {preview.map(item => <div key={item.classId} className="border border-neutral-200 rounded-lg p-3"><h3 className="font-semibold text-[#123E59]">{label(item.classId)}</h3><p className="text-sm text-neutral-600">{item.sourceName} · {item.entries.length} participantes · {resultHeads.find(h => h.class_id === item.classId)?.version_id ? 'Reemplazará el resultado publicado; la versión anterior se conserva.' : 'Nueva publicación.'}</p><ResultDetailsPanel details={item.details} />{!item.entries.length && <p className="text-amber-800">Se publicará un resultado vacío con 0 participantes.</p>}<div className="max-h-96 overflow-y-auto mt-3"><ResultRows entries={item.entries} columns={item.columns} /></div></div>)}
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />Verifiqué todas las filas contra el PDF original, la asociación de cada prueba y los reemplazos indicados, incluidos los listados vacíos.</label>

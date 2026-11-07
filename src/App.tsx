@@ -13,6 +13,7 @@ import { UsefulInfo } from './components/public/UsefulInfo';
 import { RiderSearch } from './components/public/RiderSearch';
 import { useNavigationScroll } from './hooks/useNavigationSession';
 import { trackPage } from './lib/analytics';
+import { disciplineLabels, listDiscipline } from './utils/disciplines';
 import { eventPath, resourceHash, resourceSuffix } from './utils/navigation';
 
 const AppContent: React.FC = () => {
@@ -36,6 +37,7 @@ const AppContent: React.FC = () => {
   } = useEquestrian();
 
   const hash = resourceHash(routeLocation);
+  const discipline = listDiscipline(routeLocation.pathname);
   const usefulInfo = routeLocation.pathname.replace(/\/+$/, '') === '/informacion-util';
   const usefulAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/informacion-util';
   const riderSearch = routeLocation.pathname.replace(/\/+$/, '') === '/buscar/jinetes';
@@ -61,11 +63,11 @@ const AppContent: React.FC = () => {
       routeLocation.hash || new URLSearchParams(routeLocation.search).has('event'))) return;
     const screen = usefulInfo ? 'Información útil' : riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
       : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
-      : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : 'Concursos';
+      : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : discipline && discipline !== 'jumping' && !event ? disciplineLabels[discipline] : 'Concursos';
     const title = event ? `${screen === 'Concursos' ? '' : screen + ' · '}${event.name} · EquiDate` : `${screen} · EquiDate`;
     document.title = title;
     trackPage(window.location.href);
-  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo]);
+  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, discipline]);
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -79,7 +81,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans selection:bg-neutral-900 selection:text-white pb-12">
       {/* Top Navigation Bar */}
-      <Header />
+      <Header discipline={activeView === 'public' && !selectedEventId && !hash && !routeNotFound ? discipline : undefined} />
 
       {/* Main Content Router */}
       <main className="flex-1 w-full">
@@ -114,7 +116,7 @@ const AppContent: React.FC = () => {
             <button onClick={() => setSelectedEventId(null)} className="min-h-11 px-4 bg-[#123E59] text-white rounded-lg">Volver a Concursos</button>
           </section>
         ) : (
-          <CompetitionList />
+          <CompetitionList key={discipline || 'jumping'} discipline={discipline || 'jumping'} />
         )}
       </main>
 

@@ -1,3 +1,5 @@
+import { listDiscipline } from './disciplines.ts';
+
 export const BEFORE_NAVIGATION_EVENT = 'equidate:before-navigation';
 export const NAVIGATION_EVENT = 'equidate:navigation';
 
@@ -16,6 +18,8 @@ export function eventPath(event: Pick<RoutableEvent, 'id' | 'slug'>): string {
 export function eventReference(location: RouteLocation): string | null {
   if (isAdminRoute(location)) return null;
   if (['/buscar/jinetes', '/informacion-util'].includes(location.pathname.replace(/\/+$/, ''))) return null;
+  // Root retains support for older ?event= and #event/ links.
+  if (listDiscipline(location.pathname) && location.pathname.replace(/\/+$/, '')) return null;
   let path: string;
   try { path = decodeURIComponent(location.pathname).replace(/\/+$/, ''); } catch { return '!invalid'; }
   const legacy = path.match(/^\/(?:events?|concursos?)\/([^/]+)$/i);

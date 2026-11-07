@@ -56,5 +56,6 @@ export function resultDisplayValue(row: ResultEntry, col: ResultDisplayColumn): 
     if (number(obstacle) && number(time)) return `(${obstacle}+${time})`;
     return raw(row, col.faultParts.totalKey) || obstacle || time;
   }
-  return raw(row, col.key);
+  const value = raw(row, col.key);
+  return col.key === 'total_percentage' && value.trim() && !value.trim().endsWith('%') ? value.trim() + ' %' : value;
 }

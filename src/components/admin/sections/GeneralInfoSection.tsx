@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EquestrianEvent } from '../../../types/equestrian';
+import { EquestrianEvent, EventDiscipline } from '../../../types/equestrian';
 import { useEquestrian } from '../../../context/EquestrianContext';
 import { Upload, Trash2, Image as ImageIcon, Check, AlertTriangle, Loader2 } from 'lucide-react';
+import { disciplineLabels, eventDiscipline, listDiscipline } from '../../../utils/disciplines';
 import { eventPath } from '../../../utils/navigation';
 
 interface GeneralInfoSectionProps {
@@ -20,6 +21,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   const { addEvent, updateEvent, uploadEventImage } = useEquestrian();
 
   const [name, setName] = useState(event?.name || '');
+  const [discipline, setDiscipline] = useState<EventDiscipline>('jumping');
   const [slug, setSlug] = useState('');
   const [venue, setVenue] = useState(event?.venue || '');
   const [city, setCity] = useState(event?.city || 'Buenos Aires');
@@ -56,7 +58,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
   // Track dirty changes
   useEffect(() => {
     if (!event) {
-      const hasContent = Boolean(name.trim() || venue.trim() || imageUrl.trim() || slug.trim());
+      const hasContent = Boolean(name.trim() || venue.trim() || imageUrl.trim() || slug.trim() || discipline !== 'jumping');
       onDirtyChange?.(hasContent);
       return;
     }
@@ -68,7 +70,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
       startDate !== event.startDate ||
       endDate !== event.endDate;
     onDirtyChange?.(isDirty);
-  }, [name, venue, city, imageUrl, startDate, endDate, slug, event, onDirtyChange]);
+  }, [name, venue, city, imageUrl, startDate, endDate, slug, discipline, event, onDirtyChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +88,11 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
     }
     if (startDate > endDate) {
       setErrorMessage('La fecha de inicio no puede ser posterior a la de finalización.');
+      return;
+    }
+
+    if (!event && slug.trim() && listDiscipline('/' + slug.trim())) {
+      setErrorMessage('Ese enlace está reservado para una sección de EquiDate. Elegí otro.');
       return;
     }
 
@@ -116,6 +123,7 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
           startDate,
           endDate,
           status: 'draft',
+          discipline,
         });
         setSuccessMessage('Concurso creado exitosamente.');
         onDirtyChange?.(false);
@@ -208,6 +216,15 @@ export const GeneralInfoSection: React.FC<GeneralInfoSectionProps> = ({
               placeholder="Ej: Gran Premio San Jorge - Clasificatorio"
               className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 text-sm font-medium text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#123E59] focus:border-transparent transition-all"
             />
+          </div>
+
+          <div>
+            <label htmlFor={event ? undefined : 'event-discipline'} className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1">Sección</label>
+            {event ? <p className="text-sm text-neutral-700">{disciplineLabels[eventDiscipline(event)]}</p> :
+              <select id="event-discipline" value={discipline} onChange={e => setDiscipline(e.target.value as EventDiscipline)}
+                className="w-full min-h-11 px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-white text-sm">
+                {Object.entries(disciplineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>}
           </div>
 
           <div>

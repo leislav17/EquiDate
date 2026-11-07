@@ -1,3 +1,5 @@
+export type EventDiscipline = 'jumping' | 'dressage' | 'training';
+
 export type EventStatus = 'draft' | 'published';
 
 export type EventTemporalStatus = 'ACTUAL' | 'PROXIMO' | 'FINALIZADO';
@@ -16,6 +18,7 @@ export interface DocumentPage {
 
 export interface EquestrianEvent {
   id: string;
+  discipline?: EventDiscipline;
   slug?: string; // Permanent public URL; optional for pre-migration databases.
   name: string;
   venue: string;

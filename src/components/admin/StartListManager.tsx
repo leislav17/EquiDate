@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { eventDiscipline } from '../../utils/disciplines';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
 import { StartImport, StartVersion, publishedStartList, reviewStartImport, startPdf } from '../../utils/startLists';
 import { StartListRows } from '../public/StartListView';
 
 export function StartListManager({ eventId, classId, mode = 'all', onDirtyChange, onBusyChange }: { eventId: string; classId?: string; mode?: 'all' | 'import' | 'manage'; onDirtyChange?: (dirty: boolean) => void; onBusyChange?: (busy: boolean) => void }) {
-  const { classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, startHeads, startVersions, startListsError, importStartLists, unpublishStartList } = useEquestrian();
+  const { events, classes, arenas, documents, addDocument, updateDocument, setViewingDocumentId, startHeads, startVersions, startListsError, importStartLists, unpublishStartList } = useEquestrian();
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<StartImport[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -15,6 +16,7 @@ export function StartListManager({ eventId, classId, mode = 'all', onDirtyChange
   const [historyClass, setHistoryClass] = useState('');
   useEffect(() => { onDirtyChange?.(Boolean(text.trim())); }, [text, onDirtyChange]);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  const dressage = eventDiscipline(events.find(event => event.id === eventId)) === 'dressage';
   const targets = classes.filter(c => c.eventId === eventId).sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
   const label = (id: string) => {
     const c = targets.find(c => c.id === id);
@@ -34,7 +36,7 @@ export function StartListManager({ eventId, classId, mode = 'all', onDirtyChange
   function exportTemplate() {
     const template = targets.map(c => ({ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number,
       expectedRevision: startHeads.find(h => h.class_id === c.id)?.revision ?? null,
-      sourceName: '', reviewed: false, uncertainties: ['Completar y revisar contra el PDF original'], entries: [] }));
+      sourceName: '', reviewed: false, uncertainties: [dressage ? 'Conservar position y copiar la hora del binomio en scheduledTime (HH:mm). Omitirla si no figura. Revisar contra el original.' : 'Completar y revisar contra el PDF original'], entries: [] }));
     const url = URL.createObjectURL(new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `pruebas-${eventId}.json`; link.click(); URL.revokeObjectURL(url);
   }
@@ -82,6 +84,7 @@ export function StartListManager({ eventId, classId, mode = 'all', onDirtyChange
       {history.map(v => <div key={v.id} className="flex flex-wrap gap-2 justify-between text-sm"><span>{new Date(v.created_at).toLocaleString('es-AR')} · {v.entries.length} participantes · {v.source_name}</span><button disabled={busy} className="underline min-h-11 text-[#123E59]" onClick={() => { const c = targets.find(c => c.id === v.class_id)!; changeText(JSON.stringify([{ id: crypto.randomUUID(), classId: c.id, eventId, date: c.date, arenaId: c.arenaId, number: c.number, expectedRevision: startHeads.find(h => h.class_id === c.id)?.revision ?? null, sourceName: v.source_name, reviewed: true, uncertainties: [], entries: v.entries }], null, 2)); }}>Preparar restauración</button></div>)}
     </div>}
     {(mode !== 'manage' || Boolean(text)) && <>
+    {dressage && <p className="text-sm text-neutral-600">En Adiestramiento, cada fila conserva su orden y admite un horario del binomio. En el JSON usá <code>scheduledTime</code> con formato HH:mm cuando figure en el original.</p>}
     <button className="min-h-11 underline text-[#123E59] font-semibold" onClick={exportTemplate} disabled={!targets.length || busy}>Descargar plantilla de pruebas para ChatGPT</button>
     <label className="block text-sm font-semibold">Lote revisado (JSON)<textarea className="block w-full min-h-48 mt-2 rounded-lg border border-neutral-300 p-3 text-xs font-mono" value={text} disabled={busy} onChange={e => changeText(e.target.value)} placeholder="Pegá el lote extraído y revisado con ChatGPT" /></label>
     <label className="block text-sm">O seleccioná el archivo JSON<input type="file" accept=".json,application/json" disabled={busy} className="block max-w-full my-2" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 10 * 1024 * 1024) { setMessage('El lote supera 10 MB.'); return; } changeText(await file.text()); e.target.value = ''; }} /></label>

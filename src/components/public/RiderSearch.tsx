@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { riderDirectory, riderParticipations, searchRiders, suggestRiderAssociations, type RiderAssociation } from '../../utils/riders';
 import type { ResultEntry, ResultVersion } from '../../utils/results';
 import { ResultDetailsPanel, ResultRows } from './ResultsView';
+import { eventDiscipline } from '../../utils/disciplines';
 import { eventPath } from '../../utils/navigation';
 import { sessionDataScope } from '../../utils/navigationSession';
 import { RiderHistory } from '../admin/RiderHistory';
@@ -40,7 +41,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
     })().catch(() => { if (current) { setError('No pudimos cargar el buscador. Reintentá.'); setLoading(false); } });
     return () => { current = false; };
   }, [reload, associationScope]);
-  const directory = useMemo(() => riderDirectory(data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations), [data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations]);
+  const directory = useMemo(() => riderDirectory(admin ? data.events : data.events.filter(event => eventDiscipline(event) !== 'training'), data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations), [admin, data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations]);
   const matches = searchRiders(directory, query);
   const suggestions = useMemo(() => admin ? suggestRiderAssociations(directory) : [], [admin, directory]);
   const visibleSuggestions = suggestions.filter(s => !query.trim() || s.candidates.some(c => matches.some(m => m.id === c.id)));

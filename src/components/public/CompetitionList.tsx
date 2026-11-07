@@ -21,11 +21,12 @@ import {
   RotateCcw,
   SlidersHorizontal
 } from 'lucide-react';
-import { EquestrianEvent } from '../../types/equestrian';
+import { disciplineLabels, eventDiscipline } from '../../utils/disciplines';
+import { EquestrianEvent, EventDiscipline } from '../../types/equestrian';
 
-export const CompetitionList: React.FC = () => {
+export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ discipline }) => {
   const {
-    events,
+    events: allEvents,
     activeYear,
     setActiveYear,
     selectedMonth,
@@ -34,6 +35,7 @@ export const CompetitionList: React.FC = () => {
   } = useEquestrian();
 
   // Current Argentina date
+  const events = useMemo(() => allEvents.filter(event => eventDiscipline(event) === discipline), [allEvents, discipline]);
   const argentinaTodayStr = useMemo(() => getArgentinaTodayStr(), []);
   const argentinaDate = useMemo(() => getArgentinaDate(), []);
 
@@ -304,6 +306,7 @@ export const CompetitionList: React.FC = () => {
   return (
     <div className="w-full bg-[#f4f6f8] min-h-[calc(100vh-64px)] pb-12">
       <div className="max-w-5xl mx-auto px-4 py-5 sm:py-6">
+        {discipline !== 'jumping' && <h1 className="font-display text-2xl font-bold text-[#123E59] mb-4">{disciplineLabels[discipline]}</h1>}
         {/* ======================================================== */}
         {/* 1. HERO: EVENTOS ACTUALES DESTACADOS (Carrusel con bucle) */}
         {/* ======================================================== */}

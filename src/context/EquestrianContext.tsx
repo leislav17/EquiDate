@@ -8,6 +8,7 @@ import { DEFAULT_TIME_ZONE, getYouTubeId } from '../utils/schedule';
 import { getArgentinaDate } from '../utils/dateUtils';
 import { StartHead, StartVersion, StartImport, reviewStartImport } from '../utils/startLists';
 import { ResultVersion, ResultImport, reviewResultImport } from '../utils/results';
+import { eventDiscipline } from '../utils/disciplines';
 import { eventPath, eventReference, isAdminRoute, navigate, navigateHash, readLocation, resolveEvent, resourceHash, resourceSuffix, subscribeNavigation } from '../utils/navigation';
 
 export interface DocumentPageInput {
@@ -131,9 +132,11 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const routeNotFound = !isAdminRoute(routeLocation) && Boolean(eventReference(routeLocation)) && !selectedEventId;
   const setSelectedEventId = useCallback((id: string | null) => {
     const event = events.find(event => event.id === id);
-    navigate(event ? eventPath(event) : '/');
+    const previous = events.find(event => event.id === selectedEventId);
+    const section = eventDiscipline(previous);
+    navigate(event ? eventPath(event) : section === 'jumping' ? '/' : '/' + section);
     window.scrollTo(0, 0);
-  }, [events]);
+  }, [events, selectedEventId]);
   useEffect(() => {
     if (isAdminRoute(routeLocation)) return;
     const resource = resourceHash(routeLocation);
@@ -314,6 +317,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const mappedEvents: EquestrianEvent[] = dbEvents.map((e) => ({
           id: String(e.id),
           slug: e.slug || undefined,
+          discipline: e.discipline ?? undefined,
           name: e.name,
           venue: e.venue,
           location: e.location || '',
@@ -513,6 +517,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const fields = {
       name: 'name',
       slug: 'slug',
+      discipline: 'discipline',
       venue: 'venue',
       startDate: 'start_date',
       endDate: 'end_date',
@@ -1059,7 +1064,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     requireAdmin();
     if (resultsError) throw new Error(resultsError);
     if (!batch.length) throw new Error('Lote vacío.');
-    const reviewed = reviewResultImport(batch, classes, resultHeads, batch[0].eventId);
+    const reviewed = reviewResultImport(batch, classes, resultHeads, batch[0].eventId, eventDiscipline(events.find(event => event.id === batch[0].eventId)));
     const { error } = await supabase.rpc('equidate_import_result_lists', { batch: reviewed });
     if (error) throw error;
     await refreshData();

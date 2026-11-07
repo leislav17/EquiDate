@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Award, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
+import { dressageFinalKey, publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
 import { resultDisplayColumns, resultDisplayValue } from '../../utils/resultDisplay';
+import { DressageResultRows } from './DressageResultRows';
 
 export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }) {
   if (!details.definition && !details.height && !details.allowedTime && !details.optimalTime && !details.rounds?.length) return null;
@@ -14,7 +15,12 @@ export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }
   </div>;
 }
 
-export function ResultRows({ entries, columns: sourceColumns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
+export function ResultRows({ entries, columns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
+  if (columns.some(col => col.key === dressageFinalKey)) return <DressageResultRows entries={entries} columns={columns} />;
+  return <JumpingResultRows entries={entries} columns={columns} />;
+}
+
+function JumpingResultRows({ entries, columns: sourceColumns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
   const columns = resultDisplayColumns(sourceColumns);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollable, setScrollable] = useState(false);

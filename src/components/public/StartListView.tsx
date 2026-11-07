@@ -3,10 +3,17 @@ import { ArrowLeft, Bell, Download, Search } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists';
 
-export function StartListRows({ entries }: { entries: StartEntry[] }) {
+const startGrid = (showTime: boolean) => showTime
+  ? 'grid-cols-[4rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)]'
+  : 'grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)]';
+
+export function StartListRows({ entries, showTime = entries.some(row => row.scheduledTime) }: { entries: StartEntry[]; showTime?: boolean }) {
   return <ol className="divide-y divide-neutral-200" aria-label="Orden de ingreso">
-    {entries.map(row => <li key={row.position} className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-x-3 gap-y-1 py-5">
-      <span className="row-span-3 @min-[36rem]:row-span-1 text-neutral-500 tabular-nums">{row.position}.</span>
+    {entries.map(row => <li key={row.position} className={`grid ${startGrid(showTime)} gap-x-3 gap-y-1 py-5`}>
+      <span className="row-span-3 @min-[36rem]:row-span-1 text-neutral-500 tabular-nums">
+        {row.position}.
+        {showTime && row.scheduledTime && <time dateTime={row.scheduledTime} className="block text-sm font-semibold text-[#123E59]">{row.scheduledTime}</time>}
+      </span>
       <span className="col-start-2 row-start-1 font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>
       <span className="col-start-2 row-start-2 @min-[36rem]:col-start-3 @min-[36rem]:row-start-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span>
       {(row.category || row.club) && <span className="col-start-2 row-start-3 @min-[36rem]:hidden text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{[row.category, row.club].filter(Boolean).join(' · ')}</span>}
@@ -20,11 +27,12 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
   const [search, setSearch] = useState('');
   const entry = classes.find(c => c.id === classId);
   const list = publishedStartList(classId, startHeads, startVersions);
+  const showTime = list?.entries.some(row => row.scheduledTime) ?? false;
   const pdf = startPdf(documents, classId);
   const close = () => { if (onBack) { onBack(); return; } setSelectedEventId(entry?.eventId || null); };
   const Heading = embedded ? 'h3' : 'h1';
   const query = search.trim().toLocaleLowerCase();
-  const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.category || ''} ${row.club || ''} ${row.position}`.toLocaleLowerCase().includes(query)) || [];
+  const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.category || ''} ${row.club || ''} ${row.position} ${row.scheduledTime || ''}`.toLocaleLowerCase().includes(query)) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
   return <section className={embedded ? '@container bg-white text-neutral-900 rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-[#f4f6f8] text-neutral-900 px-4 sm:px-8 py-6'} aria-label="Listado de la prueba">
     <div className="max-w-5xl mx-auto">
@@ -37,9 +45,9 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
           {pdf && <a href={downloadUrl} download aria-label="Descargar listado en PDF" title="Descargar listado en PDF" className="shrink-0 min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg border border-neutral-200 text-[#123E59]"><Download size={20} /></a>}
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>
-        <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo, categoría o club" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo, categoría o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)] gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white"><span className="flex items-center justify-start"><Bell size={18} className="text-white" aria-hidden="true" /><span className="sr-only">Orden de ingreso</span></span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
-        <StartListRows entries={rows} />
+        <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo, categoría, club u horario" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo, categoría o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
+        <div className={`grid ${startGrid(showTime)} gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white`}><span className="flex items-center justify-start"><Bell size={18} className="text-white" aria-hidden="true" /><span className="sr-only">Orden de ingreso</span>{showTime && <span className="ml-1">Hora</span>}</span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
+        <StartListRows entries={rows} showTime={showTime} />
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}
       </>}

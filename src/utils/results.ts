@@ -1,5 +1,5 @@
 import { validateStartEntries, reviewStartImport, publishedStartList, type StartEntry, type StartImport, type StartHead, type StartVersion } from './startLists.ts';
-import type { CompetitionClass, DocumentItem } from '../types/equestrian.ts';
+import type { CompetitionClass, DocumentItem, EventDiscipline } from '../types/equestrian.ts';
 
 export interface ResultColumn { key: string; label: string; group?: string; scope?: 'class' }
 export interface ResultEntry extends StartEntry { rank?: string; category?: string; qualified?: boolean; values?: Record<string, string> }
@@ -7,8 +7,9 @@ export interface ResultRound { label: string; allowedTime?: string; optimalTime?
 export interface ResultDetails { definition?: string; height?: string; allowedTime?: string; optimalTime?: string; rounds?: ResultRound[] }
 export interface ResultVersion extends StartVersion { columns: ResultColumn[]; entries: ResultEntry[]; details?: ResultDetails }
 export interface ResultImport extends StartImport { columns: ResultColumn[]; entries: ResultEntry[]; details?: ResultDetails }
-export type ResultFormat = 'single' | 'optimum' | 'two_phases' | 'jump_off' | 'two_rounds';
+export type ResultFormat = 'dressage' | 'single' | 'optimum' | 'two_phases' | 'jump_off' | 'two_rounds';
 export function resultColumnsForFormat(format: ResultFormat, detailedFaults = true): ResultColumn[] {
+  if (format === 'dressage') return [{ key: dressageFinalKey, label: 'Porcentaje total' }];
   const round = (prefix = '', group?: string): ResultColumn[] => [
     { key: prefix + 'obstacle_faults', label: 'Faltas obstáculos' }, { key: prefix + 'time_faults', label: 'Faltas tiempo' },
     { key: prefix + 'faults', label: 'Total faltas' }, { key: prefix + 'time', label: 'Tiempo' },
@@ -93,12 +94,54 @@ export function validateResultEntries(value: unknown, columns: ResultColumn[]): 
     return { ...row, rank: original.rank?.trim() || '', values: { ...values }, ...(category != null ? { category } : {}), ...('qualified' in original ? { qualified: original.qualified } : {}) };
   }).sort((a,b) => a.position - b.position);
 }
-export function reviewResultImport(value: unknown, classes: CompetitionClass[], heads: StartHead[], eventId: string): ResultImport[] {
+export const dressageFinalKey = 'total_percentage';
+export const isJudgeScoreColumn = ({ key }: ResultColumn) => /^judge_[a-z]$/.test(key);
+
+const percentagePattern = /^\d+(?:[.,]\d+)?\s*%?$/;
+const emptyMark = /^(?:[-–—]+)?$/;
+const finalStatus = /^(?:RET(?:IRADO|IRADA)?|N[ /.-]?P\.?|NO PRESENTAD[OA]|EL(?:I|IM|IMINAD[OA])?\.?|DESC(?:ALIFICAD[OA])?\.?|DNS|DNF|DSQ|WD|EXC|AUSENTE)$/i;
+
+export function displayDressagePercentage(value?: string): string {
+  const text = value?.trim() || '';
+  return percentagePattern.test(text) && !text.endsWith('%') ? text + ' %' : text;
+}
+
+function validateDressageResults(columns: ResultColumn[], entries: ResultEntry[]) {
+  if (!columns.some(col => col.key === dressageFinalKey)) {
+    throw new Error('Para Adiestramiento usá la columna total_percentage de la plantilla.');
+  }
+  const judges = new Set(columns.filter(isJudgeScoreColumn).map(col => col.key));
+  for (const col of columns) {
+    if (col.key === dressageFinalKey || judges.has(col.key)) continue;
+    if (!col.key.endsWith('_rank') || !judges.has(col.key.slice(0, -5))) {
+      throw new Error('Usá una columna judge_<letra> por juez y, si figura, su columna judge_<letra>_rank.');
+    }
+  }
+  for (const row of entries) {
+    for (const col of columns) {
+      const value = (row.values?.[col.key] || '').trim();
+      if (emptyMark.test(value)) continue;
+      if (col.key.endsWith('_rank')) {
+        if (!/^[1-9]\d*(?:\.?[º°ª])?$/.test(value)) throw new Error(`Puesto por juez inválido para ${row.rider}.`);
+        continue;
+      }
+      if (col.key === dressageFinalKey && finalStatus.test(value)) continue;
+      const numeric = Number(value.replace(/\s*%$/, '').replace(',', '.'));
+      if (!percentagePattern.test(value) || numeric > 100) {
+        throw new Error(`Porcentaje inválido para ${row.rider} en ${col.label}. Ingresá un valor entre 0 y 100.`);
+      }
+    }
+  }
+}
+
+export function reviewResultImport(value: unknown, classes: CompetitionClass[], heads: StartHead[], eventId: string, discipline: EventDiscipline = 'jumping'): ResultImport[] {
   const base = reviewStartImport(Array.isArray(value) ? value.map(item => ({ ...item, entries: [] })) : value, classes, heads, eventId);
   return base.map((item, i) => {
     const original = (value as ResultImport[])[i];
     const columns = validateResultColumns(original.columns);
-    return { ...item, columns, entries: validateResultEntries(original.entries, columns), details: validateResultDetails(original.details ?? {}) };
+    const entries = validateResultEntries(original.entries, columns);
+    if (discipline === 'dressage') validateDressageResults(columns, entries);
+    return { ...item, columns, entries, details: validateResultDetails(original.details ?? {}) };
   });
 }
 export const publishedResults = (classId: string, heads: StartHead[], versions: ResultVersion[]) => publishedStartList(classId, heads, versions) as ResultVersion | undefined;

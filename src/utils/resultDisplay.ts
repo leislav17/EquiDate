@@ -1,4 +1,4 @@
-import { resultColumnGroups, type ResultColumn, type ResultEntry } from './results.ts';
+import { displayDressagePercentage, dressageFinalKey, resultColumnGroups, type ResultColumn, type ResultEntry } from './results.ts';
 
 interface FaultParts { obstacleKey?: string; timeKey?: string; totalKey?: string }
 export interface ResultDisplayColumn extends ResultColumn { faultParts?: FaultParts; finalRounds?: (FaultParts | null)[]; finalSourceKey?: string }
@@ -56,5 +56,6 @@ export function resultDisplayValue(row: ResultEntry, col: ResultDisplayColumn): 
     if (number(obstacle) && number(time)) return `(${obstacle}+${time})`;
     return raw(row, col.faultParts.totalKey) || obstacle || time;
   }
-  return raw(row, col.key);
+  const value = raw(row, col.key);
+  return col.key === dressageFinalKey ? displayDressagePercentage(value) : value;
 }

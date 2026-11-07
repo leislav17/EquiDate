@@ -14,6 +14,7 @@ test('Chosen name and all prior variants remain searchable without duplicating p
   const original = JSON.stringify([starts,results]);
   const directory=riderDirectory(events,classes,head('s'),starts,head('r'),results,aliases);
   assert.equal(directory.length,1);
+  assert.equal(directory[0].canonicalName, 'Ana Pérez Corregida');
   for (const name of ['Ana Peres','Ana Perez','Ana Pérez Corregida','Ana Anterior']) assert.equal(searchRiders(directory,name).length,1);
   const participations=riderParticipations(directory[0]);
   assert.equal(participations.length,1);

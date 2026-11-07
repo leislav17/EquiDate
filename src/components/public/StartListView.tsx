@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Bell, Download, Search } from 'lucide-react';
+import { useCanonicalRiderNames } from '../../hooks/useCanonicalRiderNames';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists';
 
@@ -25,6 +26,7 @@ export function StartListRows({ entries, showTime = entries.some(row => row.sche
 export function StartListView({ classId, onBack, embedded = false, desktopMetadataBelowVideo = false }: { classId: string; onBack?: () => void; embedded?: boolean; desktopMetadataBelowVideo?: boolean }) {
   const { classes, arenas, events, startHeads, startVersions, documents, startListsError, refreshData, setSelectedEventId } = useEquestrian();
   const [search, setSearch] = useState('');
+  const canonicalNames = useCanonicalRiderNames();
   const entry = classes.find(c => c.id === classId);
   const list = publishedStartList(classId, startHeads, startVersions);
   const showTime = list?.entries.some(row => row.scheduledTime) ?? false;
@@ -32,7 +34,11 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
   const close = () => { if (onBack) { onBack(); return; } setSelectedEventId(entry?.eventId || null); };
   const Heading = embedded ? 'h3' : 'h1';
   const query = search.trim().toLocaleLowerCase();
-  const rows = list?.entries.filter(row => `${row.horse} ${row.rider} ${row.category || ''} ${row.club || ''} ${row.position} ${row.scheduledTime || ''}`.toLocaleLowerCase().includes(query)) || [];
+  const rows = list?.entries.flatMap(row => {
+    const rider = canonicalNames.get(`start:${list.id}:${row.position}`) ?? row.rider;
+    const matches = `${row.horse} ${row.rider} ${rider} ${row.category || ''} ${row.club || ''} ${row.position} ${row.scheduledTime || ''}`.toLocaleLowerCase().includes(query);
+    return matches ? [{ ...row, rider }] : [];
+  }) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
   return <section className={embedded ? '@container bg-white text-neutral-900 rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-[#f4f6f8] text-neutral-900 px-4 sm:px-8 py-6'} aria-label="Listado de la prueba">
     <div className="max-w-5xl mx-auto">

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Award, Download, Search } from 'lucide-react';
+import { useCanonicalRiderNames } from '../../hooks/useCanonicalRiderNames';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { dressageFinalKey, publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
 import { resultDisplayColumns, resultDisplayValue } from '../../utils/resultDisplay';
@@ -73,11 +74,16 @@ function JumpingResultRows({ entries, columns: sourceColumns }: { entries: Resul
 export function ResultsView({ classId }: { classId: string }) {
   const { classes, arenas, events, resultHeads, resultVersions, documents, resultsError, refreshData, setSelectedEventId } = useEquestrian();
   const [search, setSearch] = useState('');
+  const canonicalNames = useCanonicalRiderNames();
   const entry = classes.find(c => c.id === classId);
   const result = publishedResults(classId, resultHeads, resultVersions);
   const pdf = resultPdf(documents, classId);
   const query = search.trim().toLocaleLowerCase();
-  const rows = result?.entries.filter(r => `${r.rider} ${r.horse} ${r.club || ''} ${r.rank || ''} ${r.category || ''}`.toLocaleLowerCase().includes(query)) || [];
+  const rows = result?.entries.flatMap(row => {
+    const rider = canonicalNames.get(`result:${result.id}:${row.position}`) ?? row.rider;
+    const matches = `${row.rider} ${rider} ${row.horse} ${row.club || ''} ${row.rank || ''} ${row.category || ''}`.toLocaleLowerCase().includes(query);
+    return matches ? [{ ...row, rider }] : [];
+  }) || [];
   const close = () => setSelectedEventId(entry?.eventId || null);
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Resultados-${entry?.number || classId}.pdf`)}` : '';
   return <section aria-label="Resultados de la prueba" className="min-h-[calc(100vh-64px)] bg-white px-4 sm:px-8 py-5 sm:py-8"><div className="max-w-5xl mx-auto">

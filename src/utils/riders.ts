@@ -5,13 +5,13 @@ import { publishedResults, type ResultVersion, type ResultEntry } from './result
 export const normalizeRider = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 export interface RiderAssociation { source: string; identity: string; reason?: string; canonical_name?: string | null; name_variants?: string[] }
 export interface RiderRecord { source: string; classId: string; row: StartEntry; kind: 'start' | 'result'; version: StartVersion | ResultVersion; identity: string }
-export interface RiderCandidate { id: string; name: string; horses: string[]; clubs: string[]; records: RiderRecord[]; variants?: string[] }
+export interface RiderCandidate { id: string; name: string; canonicalName?: string; horses: string[]; clubs: string[]; records: RiderRecord[]; variants?: string[] }
 export interface Participation { id: string; classId: string; start?: RiderRecord; result?: RiderRecord }
 const knownHorse = (horse: string) => !!normalizeRider(horse) && !/^(?:[-–—?.]+|s\/?d|sin (?:caballo|datos)|no informado)$/i.test(normalizeRider(horse));
 
 /** Only current published pointers and public events enter the public directory, even in an admin session. */
 export function riderDirectory(events: EquestrianEvent[], classes: CompetitionClass[], startHeads: StartHead[], startVersions: StartVersion[], resultHeads: StartHead[], resultVersions: ResultVersion[], associations: RiderAssociation[] = []): RiderCandidate[] {
-  const overrides = new Map(associations.map(a => [a.source, a.identity]));
+  const overrides = new Map(associations.map(a => [a.source, a]));
   const parents = new Map<string, string>();
   const root = (key: string): string => {
     const parent = parents.get(key);
@@ -23,7 +23,7 @@ export function riderDirectory(events: EquestrianEvent[], classes: CompetitionCl
     if (!events.some(e => e.id === entry.eventId && e.status === 'published')) continue;
     [publishedStartList(entry.id, startHeads, startVersions), publishedResults(entry.id, resultHeads, resultVersions)].forEach((version, index) => {
       for (const row of version?.entries || []) {
-        const manual = overrides.get(`${index === 0 ? 'start' : 'result'}:${version!.id}:${row.position}`);
+        const manual = overrides.get(`${index === 0 ? 'start' : 'result'}:${version!.id}:${row.position}`)?.identity;
         if (manual) parents.set(root('name:' + normalizeRider(row.rider)), root('manual:' + manual));
       }
     });
@@ -47,9 +47,12 @@ export function riderDirectory(events: EquestrianEvent[], classes: CompetitionCl
     });
   }
   for (const group of groups.values()) {
-    const correction = group.records.map(r => associations.find(a => a.source === r.source)).find(a => a?.canonical_name);
-    if (correction?.canonical_name) group.name = correction.canonical_name;
-    group.variants = [...new Set(group.records.flatMap(r => associations.find(a => a.source === r.source)?.name_variants || []))];
+    const correction = group.records.map(r => overrides.get(r.source)).find(a => a?.canonical_name);
+    if (correction?.canonical_name) {
+      group.canonicalName = correction.canonical_name;
+      group.name = correction.canonical_name;
+    }
+    group.variants = [...new Set(group.records.flatMap(r => overrides.get(r.source)?.name_variants || []))];
   }
   return [...groups.values()].sort((a,b) => a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id));
 }

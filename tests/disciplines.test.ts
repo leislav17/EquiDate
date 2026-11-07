@@ -57,3 +57,29 @@ test('Dressage results keep published ties and percentage precision without jump
   assert.throws(() => reviewResultImport([{ ...batchItem, columns, entries: [{ ...entries[0], values: { total_percentage: '101' } }] }], classes, [], eventId, 'dressage'), /Porcentaje inválido/);
   assert.throws(() => reviewResultImport([{ ...batchItem, columns: resultColumnsForFormat('single'), entries: [] }], classes, [], eventId, 'dressage'), /total_percentage/);
 });
+
+test('Dressage imports variable judge panels, optional judge places and published statuses', () => {
+  const finals = resultColumnsForFormat('dressage');
+  const seats = ['e', 'h', 'c', 'm', 'b'];
+  for (const count of [1, 3, 5]) {
+    const judges = seats.slice(0, count).flatMap(seat => [
+      { key: 'judge_' + seat, label: 'Juez ' + seat.toUpperCase() },
+      { key: 'judge_' + seat + '_rank', label: 'Puesto juez ' + seat.toUpperCase() },
+    ]);
+    const columns = [...judges, ...finals];
+    const entries = [
+      { ...first, rank: '1º', values: { total_percentage: '66.240', judge_e: '64.600', judge_e_rank: '1º' } },
+      { ...second, rank: '2º', values: { total_percentage: 'RET', judge_e: '--' } },
+    ];
+    const [reviewed] = reviewResultImport([{ ...batchItem, columns, entries }], classes, [], eventId, 'dressage');
+    assert.deepEqual(reviewed.columns, columns);
+    assert.deepEqual(reviewed.entries.map(row => row.values), entries.map(row => row.values));
+    const finalColumn = reviewed.columns.find(col => col.key === 'total_percentage')!;
+    assert.equal(resultDisplayValue(reviewed.entries[1], finalColumn), 'RET');
+  }
+  const columns = [...finals, { key: 'judge_c', label: 'Juez C' }];
+  const review = (values: Record<string, string>) => reviewResultImport([{ ...batchItem, columns, entries: [{ ...first, values }] }], classes, [], eventId, 'dressage');
+  assert.equal(review({ total_percentage: 'NP' })[0].entries[0].values?.total_percentage, 'NP');
+  assert.throws(() => review({ total_percentage: '65,00', judge_c: '123,81' }), /Porcentaje inválido/);
+  assert.throws(() => reviewResultImport([{ ...batchItem, columns: [...finals, { key: 'judge_c_rank', label: 'Puesto juez C' }], entries: [] }], classes, [], eventId, 'dressage'), /judge_<letra>/);
+});

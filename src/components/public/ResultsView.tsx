@@ -22,7 +22,11 @@ export function ResultRows({ entries, columns }: { entries: ResultEntry[]; colum
 }
 
 function JumpingResultRows({ entries, columns: sourceColumns }: { entries: ResultEntry[]; columns: ResultColumn[] }) {
-  const columns = resultDisplayColumns(sourceColumns);
+  const columns = resultDisplayColumns(sourceColumns.filter(col => col.key !== 'award'));
+  const awards = entries.flatMap(row => {
+    const award = row.values?.award?.trim();
+    return award ? [{ row, award }] : [];
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollable, setScrollable] = useState(false);
   useEffect(() => {
@@ -53,7 +57,7 @@ function JumpingResultRows({ entries, columns: sourceColumns }: { entries: Resul
   const style = { '--result-metrics-width': columns.length ? `calc(${columns.map(c => metric(c).width).join(' + ')})` : '0px' } as CSSProperties;
   return <div className="results-table-shell" style={style}>
     {scrollable && <p className="sm:hidden text-[11px] text-neutral-500 mb-2 text-right">Deslizá la tabla para ver todas las marcas →</p>}
-    <div ref={scrollRef} className="overflow-x-auto rounded-xl border border-neutral-200" role="region" aria-label="Resultados de la prueba: tabla desplazable" tabIndex={scrollable ? 0 : undefined}>
+    <div ref={scrollRef} className={`overflow-x-auto border border-neutral-200 ${awards.length ? 'rounded-t-xl' : 'rounded-xl'}`} role="region" aria-label="Resultados de la prueba: tabla desplazable" tabIndex={scrollable ? 0 : undefined}>
       <table className="results-table text-left">
         <caption className="sr-only">Puesto, jinete, caballo, club, categoría y resultados. Faltas: número informado o, cuando existe desglose, obstáculos más penalizaciones por tiempo entre paréntesis. Tpo.: tiempo del recorrido. Total: faltas finales. Dif.: diferencia al tiempo óptimo.</caption>
         <colgroup><col style={{ width: 'var(--result-place-width)' }} /><col />{columns.map(col => <col key={col.key} style={{ width: metric(col).width }} />)}</colgroup>
@@ -69,6 +73,17 @@ function JumpingResultRows({ entries, columns: sourceColumns }: { entries: Resul
         </tr>)}</tbody>
       </table>
     </div>
+    {awards.length > 0 && <div className="rounded-b-xl border-x border-b border-neutral-200 px-4 py-3">
+      <p className="flex items-center gap-2 text-sm font-semibold text-[#123E59]">
+        <Award size={16} aria-hidden="true" /> Premios especiales
+      </p>
+      <ul className="mt-2 grid gap-2 text-sm">
+        {awards.map(({ row, award }) => <li key={row.position} className="grid gap-x-4 [overflow-wrap:anywhere] sm:grid-cols-[minmax(0,12rem)_1fr]">
+          <strong className="font-semibold text-[#123E59]">{award}</strong>
+          <span className="text-neutral-700">{row.rider}{row.horse && ` · ${row.horse}`}</span>
+        </li>)}
+      </ul>
+    </div>}
   </div>;
 }
 export function ResultsView({ classId }: { classId: string }) {

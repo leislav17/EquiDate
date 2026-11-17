@@ -29,6 +29,8 @@ const AppContent: React.FC = () => {
     selectedEventId,
     viewingDocumentId,
     isAdmin,
+    session,
+    logoutAdmin,
     isAuthLoading,
     isLoading,
     dataError,
@@ -102,6 +104,13 @@ const AppContent: React.FC = () => {
             </div>
           ) : isAdmin ? (
             usefulAdmin ? <UsefulInfo admin /> : riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
+          ) : session?.user?.app_metadata?.equidate_external === true ? (
+            <section className="max-w-xl mx-auto px-4 py-10 text-center">
+              <h1 className="text-2xl font-black text-[#123E59]">Mi cuenta</h1>
+              <p className="mt-4 text-sm text-neutral-600">Sesión iniciada como {session.user.email}.</p>
+              <p className="mt-2 text-sm text-neutral-600">Todavía no tenés concursos asignados.</p>
+              <button onClick={() => void logoutAdmin()} className="mt-6 px-5 py-3 bg-[#123E59] text-white rounded-xl font-bold">Cerrar sesión</button>
+            </section>
           ) : (
             <AdminLogin />
           )

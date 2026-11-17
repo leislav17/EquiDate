@@ -499,7 +499,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       const permission = await supabase.rpc('equidate_is_admin');
-      if (permission.error || permission.data !== true) {
+      if (permission.error || (permission.data !== true && data.user?.app_metadata?.equidate_external !== true)) {
         await supabase.auth.signOut();
         return { success: false, error: 'Esta cuenta no tiene permisos de administración.' };
       }

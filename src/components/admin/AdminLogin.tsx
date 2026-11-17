@@ -51,10 +51,10 @@ export const AdminLogin: React.FC = () => {
               <Lock className="w-6 h-6 stroke-[2.2]" />
             </div>
             <h1 className="font-display text-xl sm:text-2xl font-black text-[#123E59] tracking-tight uppercase">
-              ADMINISTRACIÓN
+              INICIAR SESIÓN
             </h1>
             <p className="text-xs text-neutral-500 font-medium mt-1">
-              Acceso exclusivo para administradores de concursos
+              Ingresá con tu correo y contraseña
             </p>
           </div>
 

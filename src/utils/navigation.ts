@@ -24,7 +24,7 @@ export function eventReference(location: RouteLocation): string | null {
   try { path = decodeURIComponent(location.pathname).replace(/\/+$/, ''); } catch { return '!invalid'; }
   const legacy = path.match(/^\/(?:events?|concursos?)\/([^/]+)$/i);
   if (legacy) return legacy[1];
-  const resource = path.match(/^\/([^/]+)\/(?:document|start-list|results|transmission)\/.+$/);
+  const resource = path.match(/^\/([^/]+)\/(?:document|start-list|live-results|results|transmission)\/.+$/);
   if (resource) return resource[1];
   if (path) return path.slice(1);
   const hash = location.hash.match(/^#\/?(?:event\/|event-|concurso\/)([^/?#]+)$/i);
@@ -63,14 +63,14 @@ export function navigateHash(hash: string): void {
 }
 
 export function resourceHash(location: RouteLocation): string {
-  if (/^(#document-|#transmission\/|#start-list\/|#results\/)/.test(location.hash)) return location.hash;
-  const match = location.pathname.replace(/\/+$/, '').match(/^\/[^/]+\/(document|start-list|results|transmission)\/(.+)$/);
+  if (/^(#document-|#transmission\/|#start-list\/|#live-results\/|#results\/)/.test(location.hash)) return location.hash;
+  const match = location.pathname.replace(/\/+$/, '').match(/^\/[^/]+\/(document|start-list|live-results|results|transmission)\/(.+)$/);
   return match ? '#' + match[1] + (match[1] === 'document' ? '-' : '/') + match[2] : '';
 }
 
 export function resourceSuffix(hash: string): string {
   if (hash.startsWith('#document-')) return '/document/' + hash.slice(10);
-  const match = hash.match(/^#(start-list|results|transmission)\/(.+)$/);
+  const match = hash.match(/^#(start-list|live-results|results|transmission)\/(.+)$/);
   return match ? '/' + match[1] + '/' + match[2] : '';
 }
 
@@ -81,7 +81,7 @@ export function installHashNavigation(): () => void {
     const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href^="#"]') : null;
     if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
     const hash = anchor.getAttribute('href') || '';
-    if (hash !== '#' && !/^#(?:document-|transmission\/|start-list\/|results\/)/.test(hash)) return;
+    if (hash !== '#' && !/^#(?:document-|transmission\/|start-list\/|live-results\/|results\/)/.test(hash)) return;
     event.preventDefault();
     navigateHash(hash === '#' ? '' : hash);
   };

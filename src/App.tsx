@@ -10,6 +10,7 @@ import { ExternalAccount } from './components/admin/ExternalAccount';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
 import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
+import { LiveResultsView } from './components/public/LiveResultsView';
 import { UsefulInfo } from './components/public/UsefulInfo';
 import { RiderSearch } from './components/public/RiderSearch';
 import { useNavigationScroll } from './hooks/useNavigationSession';
@@ -48,8 +49,9 @@ const AppContent: React.FC = () => {
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
   const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
   const resultsId = hash.startsWith('#results/') ? hash.slice(9) : null;
+  const liveResultsId = hash.startsWith('#live-results/') ? hash.slice(14) : null;
 
-  const validResource = resultsId || startListId ? classes.some(c => c.id === (resultsId || startListId) && c.eventId === selectedEventId)
+  const validResource = resultsId || startListId || liveResultsId ? classes.some(c => c.id === (resultsId || startListId || liveResultsId) && c.eventId === selectedEventId)
     : viewingDocumentId ? documents.some(d => d.id === viewingDocumentId && d.eventId === selectedEventId)
     : transmissionId ? days.some(d => d.id === transmissionId.split('/')[0] && d.eventId === selectedEventId) : true;
   const scrollKey = selectedEventId && validResource ? `view:${selectedEventId}:${hash || 'overview'}` : null;
@@ -58,19 +60,19 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     // Wait for the route to resolve; loading/auth refreshes are not pageviews.
     if (isLoading || dataError || isAuthLoading || activeView === 'admin') return;
-    const entry = classes.find(entry => entry.id === (startListId || resultsId));
+    const entry = classes.find(entry => entry.id === (startListId || resultsId || liveResultsId));
     const doc = documents.find(doc => doc.id === viewingDocumentId);
     const day = days.find(day => day.id === transmissionId?.split('/')[0]);
     const event = events.find(event => event.id === (entry?.eventId || doc?.eventId || day?.eventId || selectedEventId));
     if (event?.slug && (routeLocation.pathname !== eventPath(event) + resourceSuffix(hash) ||
       routeLocation.hash || new URLSearchParams(routeLocation.search).has('event'))) return;
     const screen = usefulInfo ? 'Información útil' : riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
-      : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
+      : liveResultsId ? 'Resultados en vivo' : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
       : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : discipline && discipline !== 'jumping' && !event ? disciplineLabels[discipline] : 'Concursos';
     const title = event ? `${screen === 'Concursos' ? '' : screen + ' · '}${event.name} · EquiDate` : `${screen} · EquiDate`;
     document.title = title;
     trackPage(window.location.href);
-  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, discipline]);
+  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, liveResultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, discipline]);
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"
@@ -89,7 +91,9 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full">
         {(dataError || refreshError) && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError || refreshError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
-        {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : resultsId ? (
+        {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : liveResultsId ? (
+          isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p> : dataError ? null : <LiveResultsView key={liveResultsId} classId={liveResultsId} />
+        ) : resultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>
             : dataError ? null : <ResultsView key={resultsId} classId={resultsId} />
         ) : startListId ? (

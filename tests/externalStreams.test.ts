@@ -28,7 +28,7 @@ test('external stream write checks current authorization and target on each oper
   await db.query("update auth.users set banned_until=null"); await db.query("update events set end_date=current_date-3 where id=$1",[event]); await assert.rejects(call());
   await db.query('update events set end_date=current_date where id=$1',[event]); await call(event,arena,null);
   assert.equal((await db.query('select * from competition_streams')).rows.length,0);
-  assert.equal((await db.query('select youtube_url from competition_days')).rows[0].youtube_url,null);
-  assert.equal((await db.query("select has_function_privilege('authenticated','public.equidate_external_save_stream(uuid,uuid,uuid,uuid,text)','execute') as allowed")).rows[0].allowed,false);
+  assert.equal((await db.query<{youtube_url: string | null}>('select youtube_url from competition_days')).rows[0].youtube_url,null);
+  assert.equal((await db.query<{allowed: boolean}>("select has_function_privilege('authenticated','public.equidate_external_save_stream(uuid,uuid,uuid,uuid,text)','execute') as allowed")).rows[0].allowed,false);
   await db.close();
 });

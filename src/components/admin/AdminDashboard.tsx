@@ -20,7 +20,7 @@ export const AdminDashboard: React.FC = () => {
     onSelectEvent={selectEvent} onNewEvent={() => selectEvent('new')} />;
   const recent = [...events].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const links = [
-    { title: 'Crear usuarios externos', url: '/admin/usuarios', icon: Users },
+    { title: 'Usuarios externos', url: '/admin/usuarios', icon: Users },
     { title: 'Gestionar concursos', url: '/admin/concursos', icon: CalendarDays },
     { title: 'Asociaciones de jinetes', url: '/admin/jinetes', icon: Users },
     { title: 'Gestionar información útil', url: '/admin/informacion-util', icon: Link },

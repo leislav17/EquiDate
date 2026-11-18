@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { ArrowLeft, Menu, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Menu, UserRound, X } from 'lucide-react';
 import type { EventDiscipline } from '../../types/equestrian';
 import { disciplineLabels } from '../../utils/disciplines';
 import { navigate } from '../../utils/navigation';
@@ -8,8 +8,19 @@ import { navigate } from '../../utils/navigation';
 export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline }) => {
   const { activeView, setActiveView, isAdmin, session, logoutAdmin, routeLocation } = useEquestrian();
   const [open, setOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { setOpen(false); }, [routeLocation]);
+  const userMenu = useRef<HTMLDivElement>(null);
+  const isExternal = !isAdmin && session?.user?.app_metadata?.equidate_external === true;
+  useEffect(() => { setOpen(false); setUserMenuOpen(false); }, [routeLocation]);
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => { if (!userMenu.current?.contains(event.target as Node)) setUserMenuOpen(false); };
+    const closeEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setUserMenuOpen(false); };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeEscape);
+    return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeEscape); };
+  }, [userMenuOpen]);
   useEffect(() => {
     if (!open) { dialog.current?.close(); return; }
     dialog.current?.showModal();
@@ -25,18 +36,28 @@ export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline 
   return <header className={`sticky top-0 z-40 bg-[#123E59] text-white shadow-sm border-b ${discipline && discipline !== 'training' ? 'border-neutral-200/90' : 'border-[#0e3247]'}`}>
     <div className="relative max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       <button type="button" aria-label="Abrir menú" aria-expanded={open} aria-controls="main-menu" onClick={() => setOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10"><Menu size={24} /></button>
-      <button type="button" onClick={() => go('/')} title="EquiDate — Inicio" aria-label="EquiDate — Inicio" className="absolute left-1/2 -translate-x-1/2 min-h-11 flex items-center gap-2 sm:gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-white/30 hover:opacity-90">
-        <svg viewBox="630 761 4075 3618" className="w-14 h-12" aria-hidden="true">
+      <button type="button" onClick={() => go('/')} title="EquiDate — Inicio" aria-label="EquiDate — Inicio" className={`${isExternal ? 'flex-1 min-w-0 justify-center sm:absolute sm:left-1/2 sm:-translate-x-1/2' : 'absolute left-1/2 -translate-x-1/2'} min-h-11 flex items-center gap-2 sm:gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-white/30 hover:opacity-90`}>
+        <svg viewBox="630 761 4075 3618" className={isExternal ? 'w-8 sm:w-14 h-12' : 'w-14 h-12'} aria-hidden="true">
           <image href="/equidate-symbol.png" width="5225" height="5225" />
         </svg>
         <span className="w-[2px] h-8 shrink-0 rounded-full bg-[#A61E4D]" aria-hidden="true" />
-        <svg viewBox="153 1806 4787 1596" className="w-36 sm:w-44 h-12" aria-hidden="true">
+        <svg viewBox="153 1806 4787 1596" className={isExternal ? 'w-20 sm:w-44 h-12' : 'w-36 sm:w-44 h-12'} aria-hidden="true">
           <image href="/equidate-wordmark.png" width="5225" height="5225" />
         </svg>
       </button>
-      {activeView === 'admin' && <button type="button" onClick={() => setActiveView('public')} aria-label="Ver Sitio Público" className="ml-auto min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20">
-        <ArrowLeft className="w-4 h-4" /><span className="hidden md:inline">Ver Sitio Público</span>
-      </button>}
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        {isExternal && <div ref={userMenu} className="relative">
+          <button type="button" aria-label={`Cuenta de ${session?.user?.email || 'usuario externo'}`} aria-expanded={userMenuOpen} aria-controls="external-user-menu" onClick={() => setUserMenuOpen(value => !value)} className="min-h-11 flex items-center gap-1 px-1 sm:px-2 rounded-lg text-xs font-bold hover:bg-white/10">
+            <UserRound className="w-4 h-4 shrink-0" /><span className="max-w-[65px] sm:max-w-[160px] truncate">{session?.user?.email || 'Usuario'}</span><ChevronDown className="w-3.5 h-3.5 shrink-0" />
+          </button>
+          {userMenuOpen && <div id="external-user-menu" className="absolute right-0 top-full mt-1 min-w-44 bg-white text-neutral-800 border border-neutral-200 rounded-xl shadow-lg p-1 z-50">
+            <button type="button" onClick={() => { setUserMenuOpen(false); void logoutAdmin().catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="w-full text-left px-4 py-3 rounded-lg text-sm hover:bg-neutral-100">Cerrar sesión</button>
+          </div>}
+        </div>}
+        {activeView === 'admin' && <button type="button" onClick={() => setActiveView('public')} aria-label="Ver Sitio Público" className="min-h-11 min-w-11 flex items-center justify-center gap-1.5 px-3 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20">
+          <ArrowLeft className="w-4 h-4" /><span className="hidden md:inline">Ver Sitio Público</span>
+        </button>}
+      </div>
     </div>
     {discipline && discipline !== 'training' && (
       <nav aria-label="Disciplinas" className="bg-white text-[#123E59] border-t border-neutral-200">

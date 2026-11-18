@@ -6,6 +6,7 @@ import { CompetitionList } from './components/public/CompetitionList';
 import { CompetitionDetail } from './components/public/CompetitionDetail';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLogin } from './components/admin/AdminLogin';
+import { ExternalAccount } from './components/admin/ExternalAccount';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
 import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
@@ -105,12 +106,7 @@ const AppContent: React.FC = () => {
           ) : isAdmin ? (
             usefulAdmin ? <UsefulInfo admin /> : riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
           ) : session?.user?.app_metadata?.equidate_external === true ? (
-            <section className="max-w-xl mx-auto px-4 py-10 text-center">
-              <h1 className="text-2xl font-black text-[#123E59]">Mi cuenta</h1>
-              <p className="mt-4 text-sm text-neutral-600">Sesión iniciada como {session.user.email}.</p>
-              <p className="mt-2 text-sm text-neutral-600">Todavía no tenés concursos asignados.</p>
-              <button onClick={() => void logoutAdmin()} className="mt-6 px-5 py-3 bg-[#123E59] text-white rounded-xl font-bold">Cerrar sesión</button>
-            </section>
+            <ExternalAccount />
           ) : (
             <AdminLogin />
           )

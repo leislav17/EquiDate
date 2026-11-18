@@ -6,7 +6,7 @@ import { disciplineLabels } from '../../utils/disciplines';
 import { navigate } from '../../utils/navigation';
 
 export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline }) => {
-  const { activeView, setActiveView, isAdmin, logoutAdmin, routeLocation } = useEquestrian();
+  const { activeView, setActiveView, isAdmin, session, logoutAdmin, routeLocation } = useEquestrian();
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { setOpen(false); }, [routeLocation]);
@@ -70,6 +70,7 @@ export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline 
           <button onClick={() => go('/training')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Pasadas</button>
           <button onClick={() => go('/buscar/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Buscar jinetes</button>
           <button onClick={() => go('/informacion-util')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Información útil</button>
+          {!isAdmin && session?.user?.app_metadata?.equidate_external === true && <><p className="px-3 mt-4 pt-4 border-t border-white/20 text-xs uppercase tracking-wider text-white/60">Mi cuenta</p><button onClick={() => go('/admin/mis-concursos')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Mis concursos</button><button onClick={() => { void logoutAdmin().then(() => setOpen(false)).catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Cerrar sesión</button></>}
           {isAdmin && <><p className="px-3 mt-4 pt-4 border-t border-white/20 text-xs uppercase tracking-wider text-white/60">Administración</p><button onClick={() => go('/admin')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Panel de administración</button><button onClick={() => go('/admin/concursos')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Gestionar concursos</button><button onClick={() => go('/admin/jinetes')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Asociaciones de jinetes</button><button onClick={() => go('/admin/informacion-util')} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Gestionar información útil</button><button onClick={() => { void logoutAdmin().then(() => setOpen(false)).catch(() => window.alert('No pudimos cerrar la sesión. Reintentá.')); }} className="text-left min-h-12 rounded-lg px-3 hover:bg-white/10">Cerrar sesión</button></>}
         </nav>
       </div>

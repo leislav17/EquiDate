@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { getYouTubeId } from '../../utils/schedule';
+import { useEquestrian } from '../../context/EquestrianContext';
 
 type Day = { id: string; event_date: string };
 type Arena = { id: string; name: string };
 type Stream = { day_id: string; arena_id: string; youtube_url: string };
 export const ExternalStreams: React.FC<{ eventId: string; eventName: string; onBack: () => void }> = ({ eventId, eventName, onBack }) => {
+  const { refreshData } = useEquestrian();
   const [days, setDays] = useState<Day[]>([]);
   const [arenas, setArenas] = useState<Arena[]>([]);
   const [streams, setStreams] = useState<Stream[]>([]);
@@ -29,7 +31,7 @@ export const ExternalStreams: React.FC<{ eventId: string; eventName: string; onB
     setBusy(true);
     const { data, error } = await supabase.functions.invoke('external-assignments', { body: { action: 'streams_save', eventId, dayId, arenaId, url: url.trim() } });
     if (error || !data?.success) setError('No se pudo guardar. Verificá que tu acceso siga habilitado y volvé a intentarlo.');
-    else { await load(); setMessage('Transmisión actualizada.'); }
+    else { await load(); await refreshData(); setMessage('Transmisión actualizada.'); }
     setBusy(false);
   };
   const field = 'block w-full mt-1 h-11 px-3 border border-neutral-300 rounded-xl font-normal';

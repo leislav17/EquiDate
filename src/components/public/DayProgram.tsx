@@ -12,7 +12,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
   onOpenListDocument?: (document: DocumentItem) => void;
   showResults?: boolean;
 }) {
-  const { classes, arenas, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
+  const { classes, arenas, events, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
 
   const allDayClasses = classes.filter(entry => entry.eventId === eventId && entry.date === date);
   const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type) && (showResults || doc.type !== 'RESULT'));
@@ -76,6 +76,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
             {list && <a href={`#start-list/${entry.id}`} onClick={e => {
               if (onOpenStartList && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onOpenStartList(entry.id); }
             }} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Bell className="w-4 h-4" />Listado</a>}
+            {showResults && list && (events.find(event => event.id === eventId)?.discipline || 'jumping') === 'jumping' && <a href={`#live-results/${entry.id}`} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Award className="w-4 h-4" />Resultados en vivo</a>}
             {results && <a href={`#results/${entry.id}`} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Award className="w-4 h-4" />Resultados</a>}
             {attached.filter(doc => (!list || doc.type !== 'START_LIST') && (!results || doc.type !== 'RESULT')).map(action)}
           </div>

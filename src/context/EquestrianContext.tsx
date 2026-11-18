@@ -142,6 +142,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resource = resourceHash(routeLocation);
     const ownerId = resource.startsWith('#document-') ? documents.find(doc => doc.id === resource.slice(10))?.eventId
       : resource.startsWith('#start-list/') ? classes.find(entry => entry.id === resource.slice(12))?.eventId
+      : resource.startsWith('#live-results/') ? classes.find(entry => entry.id === resource.slice(14))?.eventId
       : resource.startsWith('#results/') ? classes.find(entry => entry.id === resource.slice(9))?.eventId
       : resource.startsWith('#transmission/') ? days.find(day => day.id === resource.slice(14).split('/')[0])?.eventId : null;
     const event = ownerId ? events.find(event => event.id === ownerId && event.status === 'published') : resolveEvent(routeLocation, events);

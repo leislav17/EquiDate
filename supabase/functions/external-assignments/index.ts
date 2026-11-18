@@ -30,13 +30,24 @@ Deno.serve(async (req: Request) => {
     if (error) return reply({ error: 'No se pudieron consultar las asignaciones.' }, 500);
     return reply({ users, assignments });
   }
-  if (['disable', 'enable', 'password'].includes(body.action) && typeof body.userId === 'string') {
+  if (['disable', 'enable', 'password', 'email', 'delete'].includes(body.action) && typeof body.userId === 'string') {
     const { data, error } = await service.auth.admin.getUserById(body.userId);
     if (error || data.user?.app_metadata?.equidate_external !== true || data.user.app_metadata?.equidate_admin === true || data.user.app_metadata?.role === 'superadmin') return reply({ error: 'Usuario externo inválido.' }, 400);
     if (body.action === 'password' && (typeof body.password !== 'string' || body.password.length < 8)) return reply({ error: 'La contraseña debe tener al menos 8 caracteres.' }, 400);
-    const attributes = body.action === 'password' ? { password: body.password } : { ban_duration: body.action === 'disable' ? '876000h' : 'none' };
+    if (body.action === 'email' && (typeof body.email !== 'string' || !body.email.trim())) return reply({ error: 'Correo inválido.' }, 400);
+    if (body.action === 'delete') {
+      const result = await service.auth.admin.deleteUser(body.userId);
+      if (result.error) return reply({ error: 'No se pudo eliminar el usuario.' }, 400);
+      return reply({ success: true });
+    }
+    const attributes = body.action === 'password' ? { password: body.password } : body.action === 'email' ? { email: body.email.trim().toLowerCase(), email_confirm: true } : { ban_duration: body.action === 'disable' ? '876000h' : 'none' };
     const result = await service.auth.admin.updateUserById(body.userId, attributes);
     if (result.error) return reply({ error: 'No se pudo actualizar el usuario.' }, 400);
+    return reply({ success: true });
+  }
+  if (body.action === 'unassign' && typeof body.userId === 'string' && typeof body.eventId === 'string') {
+    const { error } = await service.from('external_event_assignments').delete().eq('user_id', body.userId).eq('event_id', body.eventId);
+    if (error) return reply({ error: 'No se pudo quitar el concurso.' }, 400);
     return reply({ success: true });
   }
   if (body.action === 'assign' && typeof body.userId === 'string' && typeof body.eventId === 'string') {

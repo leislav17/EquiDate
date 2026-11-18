@@ -5,14 +5,14 @@ import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 
 async function request(user: any, admin: boolean, body: any, target: any = { app_metadata: { equidate_external: true } }) {
-  let handler: any, updates: any[] = [], queried = false;
+  let handler: any, updates: any[] = [], deleted: string[] = [], queried = false;
   const authClient = { auth: { getUser: async () => ({ data: { user }, error: null }) }, rpc: async () => ({ data: admin, error: null }) };
-  const service = { auth: { admin: { getUserById: async () => ({ data: { user: target }, error: null }), updateUserById: async (...args: any[]) => { updates.push(args); return { error: null }; } } }, from: () => ({ select: () => ({ eq: async () => { queried = true; return { data: [], error: null }; } }) }) };
+  const service = { auth: { admin: { getUserById: async () => ({ data: { user: target }, error: null }), updateUserById: async (...args: any[]) => { updates.push(args); return { error: null }; }, deleteUser: async (id: string) => { deleted.push(id); return { error: null }; } } }, from: () => ({ select: () => ({ eq: async () => { queried = true; return { data: [], error: null }; } }) }) };
   const source = readFileSync('supabase/functions/external-assignments/index.ts', 'utf8').replace(/^import .*\n/, '');
   const js = transformSync(source, { loader: 'ts', target: 'es2022' }).code;
   vm.runInNewContext(js, { createClient: (_url: string, key: string) => key === 'service' ? service : authClient, Deno: { env: { get: (key: string) => key === 'SUPABASE_SERVICE_ROLE_KEY' ? 'service' : 'anon' }, serve: (fn: any) => { handler = fn; } }, Response, Date });
   const result = await handler(new Request('https://example.test', { method: 'POST', body: JSON.stringify(body) }));
-  return { status: result.status, updates, queried };
+  return { status: result.status, updates, deleted, queried };
 }
 const external = { id: 'external', app_metadata: { equidate_external: true } };
 test('disabled external user cannot read assigned events with an existing token', async () => {
@@ -20,10 +20,17 @@ test('disabled external user cannot read assigned events with an existing token'
   assert.equal(result.status, 403); assert.equal(result.queried, false);
 });
 test('external user cannot disable accounts or reset passwords', async () => {
-  for (const action of ['disable', 'enable', 'password']) {
+  for (const action of ['disable', 'enable', 'password', 'email', 'delete', 'unassign']) {
     const result = await request(external, false, { action, userId: 'target', password: 'password123' });
     assert.equal(result.status, 403); assert.equal(result.updates.length, 0);
   }
+});
+test('only an external account can be deleted by an admin', async () => {
+  const admin = { id: 'admin', app_metadata: { equidate_admin: true } };
+  const allowed = await request(admin, true, { action: 'delete', userId: 'external' });
+  assert.equal(allowed.status, 200); assert.equal(allowed.deleted[0], 'external');
+  const protectedUser = await request(admin, true, { action: 'delete', userId: 'admin' }, { app_metadata: { equidate_external: true, equidate_admin: true } });
+  assert.equal(protectedUser.status, 400); assert.equal(protectedUser.deleted.length, 0);
 });
 test('admin can manage external accounts but cannot manage an admin account', async () => {
   const actor = { id: 'admin', app_metadata: { equidate_admin: true } };

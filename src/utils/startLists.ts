@@ -9,7 +9,7 @@ export interface StartImport {
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const normalized = (s: string) => s.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-export function validateStartEntries(value: unknown): StartEntry[] {
+export function validateStartEntries(value: unknown, allowRepeatedPairs = false): StartEntry[] {
   if (!Array.isArray(value) || value.length > 10000) throw new Error('El listado debe contener hasta 10.000 filas.');
   const positions = new Set<number>(), pairs = new Set<string>();
   return value.map((row, index) => {
@@ -24,7 +24,7 @@ export function validateStartEntries(value: unknown): StartEntry[] {
       throw new Error(`Horario de binomio inválido en fila ${index + 1}. Usá HH:mm.`);
     }
     const pair = JSON.stringify([normalized(rider), normalized(horse)]);
-    if (horse.trim() && pairs.has(pair)) throw new Error(`Binomio duplicado en fila ${index + 1}.`);
+    if (!allowRepeatedPairs && horse.trim() && pairs.has(pair)) throw new Error(`Binomio duplicado en fila ${index + 1}.`);
     positions.add(position); if (horse.trim()) pairs.add(pair);
     return { position, rider: rider.trim(), horse: horse.trim(), club: club?.trim() || null, ...(category != null ? { category: category.trim() } : {}), ...(time ? { scheduledTime: time } : {}) };
   }).sort((a, b) => a.position - b.position);
@@ -42,7 +42,7 @@ export function reviewStartImport(value: unknown, classes: CompetitionClass[], h
     if (item.expectedRevision !== (head?.revision ?? null)) throw new Error(`Prueba ${entry.number}: el listado cambió. Actualizá el lote.`);
     if (typeof item.sourceName !== 'string' || !item.sourceName.trim() || item.sourceName.trim().length > 500) throw new Error('Indicá el nombre del PDF de origen.');
     if (!Array.isArray(item.uncertainties) || item.uncertainties.length || item.reviewed !== true) throw new Error('Revisá el PDF y resolvé todos los datos inciertos antes de importar.');
-    return { ...item, sourceName: item.sourceName.trim(), entries: validateStartEntries(item.entries) };
+    return { ...item, sourceName: item.sourceName.trim(), entries: validateStartEntries(item.entries, /\bpasadas\b/i.test(entry.name)) };
   });
 }
 export function publishedStartList(classId: string, heads: StartHead[], versions: StartVersion[]) {

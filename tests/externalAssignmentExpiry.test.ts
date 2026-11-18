@@ -1,0 +1,33 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { transformSync } from 'esbuild';
+import { PGlite } from '@electric-sql/pglite';
+const source = readFileSync('supabase/functions/external-assignments/index.ts', 'utf8').replace(/^import .*\n/, '');
+const js = transformSync(source, { loader: 'ts', target: 'es2022' }).code;
+const context = { Deno: { serve: () => {} }, Intl, Date, Response };
+const valid = vm.runInNewContext(`${js}\nisCurrent`, context) as (end: string, now: Date) => boolean;
+test('access ends at midnight after the day following the event in Argentina', () => {
+  assert.equal(valid('2026-11-20', new Date('2026-11-22T02:59:59Z')), true);
+  assert.equal(valid('2026-11-20', new Date('2026-11-22T03:00:00Z')), false);
+  assert.equal(valid('2026-12-31', new Date('2027-01-02T02:59:59Z')), true);
+  assert.equal(valid('2026-12-31', new Date('2027-01-02T03:00:00Z')), false);
+  assert.equal(valid('invalid', new Date()), false);
+});
+test('replacement preserves assignment on error and changes only the targeted contest', async () => {
+  const db = new PGlite();
+  await db.exec(`create role anon; create role authenticated; create role service_role; create table public.events(id uuid primary key); create table public.external_event_assignments(user_id uuid not null,event_id uuid not null references public.events(id),primary key(user_id,event_id));`);
+  await db.exec(readFileSync('supabase/migrations/20261118110037_replace_external_assignment.sql', 'utf8'));
+  const event = '00000000-0000-0000-0000-000000000001', other = '00000000-0000-0000-0000-000000000002', old = '00000000-0000-0000-0000-000000000011', next = '00000000-0000-0000-0000-000000000012';
+  await db.query('insert into events values ($1), ($2)', [event, other]);
+  await db.query('insert into external_event_assignments values ($1,$2),($1,$3)', [old,event,other]);
+  await assert.rejects(db.query('select equidate_replace_external_assignment($1,$2,$3)', [event, next, old]));
+  assert.equal((await db.query('select * from external_event_assignments')).rows.length, 2);
+  await db.query('select equidate_replace_external_assignment($1,$2,$3)', [event,old,next]);
+  const rows = (await db.query('select user_id,event_id from external_event_assignments order by event_id')).rows as {user_id:string,event_id:string}[];
+  assert.equal(rows[0].user_id,next); assert.equal(rows[1].user_id,old);
+  const privileges = (await db.query("select has_function_privilege('authenticated','public.equidate_replace_external_assignment(uuid,uuid,uuid)','execute') as allowed")).rows[0] as {allowed:boolean};
+  assert.equal(privileges.allowed,false);
+  await db.close();
+});

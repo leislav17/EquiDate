@@ -5,7 +5,11 @@ import { useEquestrian } from '../../context/EquestrianContext';
 
 export const AdminUsers: React.FC = () => {
   const { events } = useEquestrian();
-  const [users, setUsers] = useState<{id: string; email: string}[]>([]);
+  const [users, setUsers] = useState<{id: string; email: string; disabled: boolean}[]>([]);
+  const [passwordUser, setPasswordUser] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [accountMessage, setAccountMessage] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
   const [assignments, setAssignments] = useState<{user_id: string; event_id: string}[]>([]);
   const [userId, setUserId] = useState('');
   const [eventId, setEventId] = useState('');
@@ -16,6 +20,18 @@ export const AdminUsers: React.FC = () => {
     setUsers(data.users); setAssignments(data.assignments); setListError('');
   };
   useEffect(() => { void load(); }, []);
+  const updateAccount = async (action: 'disable' | 'enable' | 'password', targetId: string) => {
+    if (action === 'disable' && !window.confirm('¿Desactivar esta cuenta? La persona dejará de poder operar, incluso si tiene una sesión abierta.')) return;
+    setListError(''); setAccountMessage(''); setAccountBusy(true);
+    try {
+      const body = action === 'password' ? { action, userId: targetId, password: newPassword } : { action, userId: targetId };
+      const { error, data } = await supabase.functions.invoke('external-assignments', { body });
+      if (error || !data?.success) throw new Error('No se pudo actualizar el usuario.');
+      setNewPassword(''); setPasswordUser(''); setAccountMessage(action === 'password' ? 'Contraseña actualizada.' : action === 'disable' ? 'Cuenta desactivada.' : 'Cuenta reactivada.');
+      await load();
+    } catch { setListError('No se pudo actualizar el usuario.'); }
+    finally { setAccountBusy(false); }
+  };
   const assign = async (e: React.FormEvent) => {
     e.preventDefault(); setListError('');
     const { error, data } = await supabase.functions.invoke('external-assignments', { body: { action: 'assign', userId, eventId } });
@@ -59,7 +75,11 @@ export const AdminUsers: React.FC = () => {
         <button className="px-5 py-3 bg-[#123E59] text-white rounded-xl font-bold">Asignar concurso</button>
       </form>
       {listError && <p role="alert" className="text-red-700 text-sm">{listError}</p>}
-      {users.map(user => <div key={user.id} className="border-t pt-3"><p className="font-bold">{user.email}</p><ul className="text-sm text-neutral-600">{assignments.filter(a => a.user_id === user.id).map(a => <li key={a.event_id}>{events.find(e => e.id === a.event_id)?.name || 'Concurso no disponible'}</li>)}</ul>{!assignments.some(a => a.user_id === user.id) && <p className="text-sm text-neutral-500">Sin concursos asignados.</p>}</div>)}
+      {accountMessage && <p role="status" className="text-green-700 text-sm">{accountMessage}</p>}
+      {users.map(user => <div key={user.id} className="border-t pt-3 space-y-2"><p className="font-bold">{user.email} <span className="text-xs font-normal">({user.disabled ? 'Desactivada' : 'Activa'})</span></p><ul className="text-sm text-neutral-600">{assignments.filter(a => a.user_id === user.id).map(a => <li key={a.event_id}>{events.find(e => e.id === a.event_id)?.name || 'Concurso no disponible'}</li>)}</ul>{!assignments.some(a => a.user_id === user.id) && <p className="text-sm text-neutral-500">Sin concursos asignados.</p>}
+        <div className="flex gap-3 flex-wrap"><button type="button" disabled={accountBusy} onClick={() => void updateAccount(user.disabled ? 'enable' : 'disable', user.id)} className="underline text-sm text-[#123E59]">{user.disabled ? 'Reactivar cuenta' : 'Desactivar cuenta'}</button><button type="button" disabled={accountBusy} onClick={() => { setPasswordUser(user.id); setNewPassword(''); }} className="underline text-sm text-[#123E59]">Establecer nueva contraseña</button></div>
+        {passwordUser === user.id && <form onSubmit={e => { e.preventDefault(); void updateAccount('password', user.id); }} className="space-y-2"><label className="block text-sm font-bold">Nueva contraseña<input type="password" required minLength={8} autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="block w-full mt-1 h-11 px-3 border rounded-xl font-normal" /></label><p className="text-xs text-neutral-500">Mínimo 8 caracteres. No se enviará por correo ni podrá volver a mostrarse.</p><button disabled={accountBusy} className="bg-[#123E59] text-white rounded-xl px-4 py-2">Guardar contraseña</button> <button type="button" onClick={() => { setPasswordUser(''); setNewPassword(''); }} className="underline text-sm">Cancelar</button></form>}
+      </div>)}
     </section>
   </div>;
 };

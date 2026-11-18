@@ -5,6 +5,7 @@ import { AdminCompetitionList } from './AdminCompetitionList';
 import { AdminEventEditor } from './AdminEventEditor';
 import { navigate } from '../../utils/navigation';
 import { AdminCompetitionCard } from './AdminCompetitionCard';
+import { AdminUsers } from './AdminUsers';
 
 export const AdminDashboard: React.FC = () => {
   const { events, routeLocation } = useEquestrian();
@@ -12,12 +13,14 @@ export const AdminDashboard: React.FC = () => {
   const legacyQuery = routeLocation.hash.split('?')[1] || routeLocation.hash.replace(/^#/, '');
   const currentEventId = queryEvent || new URLSearchParams(legacyQuery).get('event');
   const selectEvent = (id: string, replace = false) => navigate(`/admin/concursos?event=${encodeURIComponent(id)}`, replace);
+  if (routeLocation.pathname.replace(/\/+$/, '') === '/admin/usuarios') return <AdminUsers />;
   if (currentEventId) return <AdminEventEditor key={currentEventId} eventId={currentEventId}
     onBack={() => navigate('/admin/concursos')} onSelectEvent={id => selectEvent(id, true)} />;
   if (routeLocation.pathname.replace(/\/+$/, '') === '/admin/concursos') return <AdminCompetitionList
     onSelectEvent={selectEvent} onNewEvent={() => selectEvent('new')} />;
   const recent = [...events].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
   const links = [
+    { title: 'Usuarios externos', url: '/admin/usuarios', icon: Users },
     { title: 'Gestionar concursos', url: '/admin/concursos', icon: CalendarDays },
     { title: 'Asociaciones de jinetes', url: '/admin/jinetes', icon: Users },
     { title: 'Gestionar información útil', url: '/admin/informacion-util', icon: Link },

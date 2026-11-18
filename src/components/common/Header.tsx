@@ -22,7 +22,7 @@ export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline 
     navigate(url);
     window.scrollTo(0, 0);
   };
-  return <header className="sticky top-0 z-40 bg-[#123E59] text-white shadow-sm border-b border-[#0e3247]">
+  return <header className={`sticky top-0 z-40 bg-[#123E59] text-white shadow-sm border-b ${discipline && discipline !== 'training' ? 'border-neutral-200/90' : 'border-[#0e3247]'}`}>
     <div className="relative max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       <button type="button" aria-label="Abrir menú" aria-expanded={open} aria-controls="main-menu" onClick={() => setOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10"><Menu size={24} /></button>
       <button type="button" onClick={() => go('/')} title="EquiDate — Inicio" aria-label="EquiDate — Inicio" className="absolute left-1/2 -translate-x-1/2 min-h-11 flex items-center gap-2 sm:gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-white/30 hover:opacity-90">

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { supabase } from '../../lib/supabase';
-import { riderDirectory, riderParticipations, searchRiders, suggestRiderAssociations, type RiderAssociation } from '../../utils/riders';
+import { riderDirectory, riderParticipations, searchRiders, suggestRiderAssociations } from '../../utils/riders';
 import type { ResultEntry, ResultVersion } from '../../utils/results';
 import { ResultDetailsPanel, ResultRows } from './ResultsView';
 import { eventDiscipline } from '../../utils/disciplines';
 import { eventPath } from '../../utils/navigation';
+import { useRiderAssociations } from '../../hooks/useRiderAssociations';
 import { sessionDataScope } from '../../utils/navigationSession';
 import { RiderHistory } from '../admin/RiderHistory';
 import { ChevronDown } from 'lucide-react';
@@ -15,32 +16,15 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const associationScope = sessionDataScope(data.session);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
-  const [associations, setAssociations] = useState<RiderAssociation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  const { associations, loading, error, setError } = useRiderAssociations(associationScope, reload);
   const [checked, setChecked] = useState<string[]>([]);
   const [reviewSources, setReviewSources] = useState<string[]>([]);
   const [reason, setReason] = useState('');
   const [chosenName, setChosenName] = useState('');
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let current = true;
-    setLoading(true); setError('');
-    void (async () => {
-      const rows: RiderAssociation[] = [];
-      for (let offset = 0; ; offset += 500) {
-        const response = await supabase.from('rider_associations').select('source,identity,reason,canonical_name,name_variants').order('source').range(offset, offset + 499);
-        if (!current) return;
-        if (response.error) { setError('No pudimos verificar las asociaciones de jinetes. Reintentá para consultar datos seguros.'); setLoading(false); return; }
-        rows.push(...response.data);
-        if (response.data.length < 500) break;
-      }
-      if (current) { setAssociations(rows); setLoading(false); setChecked([]); setReviewSources([]); }
-    })().catch(() => { if (current) { setError('No pudimos cargar el buscador. Reintentá.'); setLoading(false); } });
-    return () => { current = false; };
-  }, [reload, associationScope]);
+  useEffect(() => { setChecked([]); setReviewSources([]); }, [associations]);
   const directory = useMemo(() => riderDirectory(admin ? data.events : data.events.filter(event => eventDiscipline(event) !== 'training'), data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations), [admin, data.events, data.classes, data.startHeads, data.startVersions, data.resultHeads, data.resultVersions, associations]);
   const matches = searchRiders(directory, query);
   const suggestions = useMemo(() => admin ? suggestRiderAssociations(directory) : [], [admin, directory]);
@@ -110,7 +94,7 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
               <p className="mt-2">{row.horse || 'Caballo no informado'}{row.category ? ` · ${row.category}` : ''}</p>
               <p className="font-semibold text-[#123E59]">{p.start ? `Orden de ingreso: ${p.start.row.position}` : 'Sin orden de ingreso asociado'}</p>
               {p.start && <a className="inline-block text-sm underline min-h-11 content-center" href={`${eventPath(event)}/start-list/${entry.id}`}>Ver listado</a>}
-              {p.result && result && <details className="mt-2"><summary className="cursor-pointer min-h-11 content-center font-semibold text-[#A61E4D]">Ver actuación</summary><ResultDetailsPanel details={result.details} /><div className="mt-4"><ResultRows entries={[p.result.row as ResultEntry]} columns={result.columns} /></div><a className="inline-block min-h-11 content-center text-sm underline" href={`${eventPath(event)}/results/${entry.id}`}>Ver resultados de la prueba</a></details>}
+              {p.result && result && <details className="mt-2"><summary className="cursor-pointer min-h-11 content-center font-semibold text-[#A61E4D]">Ver actuación</summary><ResultDetailsPanel details={result.details} /><div className="mt-4"><ResultRows entries={[{ ...p.result.row as ResultEntry, rider: candidate.canonicalName ?? p.result.row.rider }]} columns={result.columns} /></div><a className="inline-block min-h-11 content-center text-sm underline" href={`${eventPath(event)}/results/${entry.id}`}>Ver resultados de la prueba</a></details>}
             </article>;
           })}
         </details>)}

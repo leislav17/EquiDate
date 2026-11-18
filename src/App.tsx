@@ -6,6 +6,7 @@ import { CompetitionList } from './components/public/CompetitionList';
 import { CompetitionDetail } from './components/public/CompetitionDetail';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { AdminLogin } from './components/admin/AdminLogin';
+import { ExternalAccount } from './components/admin/ExternalAccount';
 import { DedicatedDocumentView } from './components/viewer/DedicatedDocumentView';
 import { StartListView } from './components/public/StartListView';
 import { ResultsView } from './components/public/ResultsView';
@@ -29,6 +30,8 @@ const AppContent: React.FC = () => {
     selectedEventId,
     viewingDocumentId,
     isAdmin,
+    session,
+    logoutAdmin,
     isAuthLoading,
     isLoading,
     dataError,
@@ -102,6 +105,8 @@ const AppContent: React.FC = () => {
             </div>
           ) : isAdmin ? (
             usefulAdmin ? <UsefulInfo admin /> : riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
+          ) : session?.user?.app_metadata?.equidate_external === true ? (
+            <ExternalAccount />
           ) : (
             <AdminLogin />
           )

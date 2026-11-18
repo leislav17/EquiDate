@@ -11,6 +11,19 @@ const isCurrent = (end: string, now = new Date()) => {
   const part = (type: string) => parts.find(p => p.type === type)?.value;
   return `${part('year')}-${part('month')}-${part('day')}` <= next.toISOString().slice(0, 10);
 };
+const youtubeId = (value: string) => {
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port) return null;
+    const host = url.hostname.toLowerCase();
+    let id: string | null = null;
+    if (host === 'youtu.be') id = url.pathname.slice(1);
+    else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com'].includes(host)) {
+      id = url.pathname === '/watch' ? url.searchParams.get('v') : url.pathname.match(/^\/(?:embed|live|shorts)\/([A-Za-z0-9_-]{11})\/?$/)?.[1] || null;
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch { return null; }
+};
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply({ error: 'Método no permitido.' }, 405);
@@ -20,6 +33,27 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
+  if (body.action === 'streams_list' || body.action === 'streams_save') {
+    if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
+    if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
+    if (body.action === 'streams_save') {
+      if (typeof body.dayId !== 'string' || typeof body.arenaId !== 'string' || typeof body.url !== 'string') return reply({ error: 'Datos inválidos.' }, 400);
+      const url = body.url.trim();
+      if (url && !youtubeId(url)) return reply({ error: 'Ingresá un enlace válido de YouTube.' }, 400);
+      const { error } = await service.rpc('equidate_external_save_stream', { actor: auth.user.id, target_event: body.eventId, target_day: body.dayId, target_arena: body.arenaId, video_url: url || null });
+      if (error) return reply({ error: 'No se pudo guardar. Verificá que el acceso siga habilitado.' }, 403);
+      return reply({ success: true });
+    }
+    const { data: assignment, error: assignmentError } = await service.from('external_event_assignments').select('event:events(id,name,end_date)').eq('user_id', auth.user.id).eq('event_id', body.eventId).maybeSingle();
+    if (assignmentError || !assignment?.event || !isCurrent(assignment.event.end_date)) return reply({ error: 'Concurso no autorizado.' }, 403);
+    const [days, arenas, streams] = await Promise.all([
+      service.from('competition_days').select('id,event_date').eq('event_id', body.eventId).order('event_date'),
+      service.from('competition_arenas').select('id,name,sort_order').eq('event_id', body.eventId).order('sort_order'),
+      service.from('competition_streams').select('day_id,arena_id,youtube_url').eq('event_id', body.eventId),
+    ]);
+    if (days.error || arenas.error || streams.error) return reply({ error: 'No se pudieron cargar las transmisiones.' }, 500);
+    return reply({ days: days.data, arenas: arenas.data, streams: streams.data });
+  }
   if (body.action === 'mine') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     const { data, error } = await service.from('external_event_assignments').select('event:events(id,name,start_date,end_date)').eq('user_id', auth.user.id);

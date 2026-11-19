@@ -33,12 +33,18 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'live_list' || body.action === 'live_save') {
+  if (body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
+    if (body.action === 'live_tracking') {
+      if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !['current','absent','restore'].includes(body.operation)) return reply({ error: 'Datos inválidos.' }, 400);
+      const { error } = await service.rpc('equidate_live_tracking_action', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, action: body.operation });
+      if (error) return reply({ error: 'No se pudo actualizar el estado.' }, 403);
+      return reply({ success: true });
+    }
     if (body.action === 'live_save') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !Number.isInteger(body.faults) || typeof body.seconds !== 'number' || !Number.isFinite(body.seconds)) return reply({ error: 'Datos inválidos.' }, 400);
-      const { error } = await service.rpc('equidate_external_save_live_result_phases', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds, second_faults: body.secondFaults ?? null, second_seconds: body.secondSeconds ?? null });
+      const { error } = await service.rpc('equidate_save_live_result_and_advance', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds, second_faults: body.secondFaults ?? null, second_seconds: body.secondSeconds ?? null });
       if (error) return reply({ error: 'No se pudo guardar. Comprobá tu acceso y que el listado no haya cambiado.' }, 403);
       return reply({ success: true });
     }
@@ -52,15 +58,16 @@ Deno.serve(async (req: Request) => {
     if (headsError) return reply({ error: 'No se pudieron consultar los listados.' }, 500);
     const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
     if (!versionIds.length) return reply({ classes: [] });
-    const [versions, marks] = await Promise.all([
+    const [versions, marks, tracking] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
+      service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows').in('class_id', ids).in('start_version_id', versionIds),
     ]);
-    if (versions.error || marks.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
+    if (versions.error || marks.error || tracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
       const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
       const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return version ? [{ ...c, versionId: version.id, entries: version.entries, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version.id) }] : [];
+      return version ? [{ ...c, versionId: version.id, entries: version.entries, tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version.id) }] : [];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

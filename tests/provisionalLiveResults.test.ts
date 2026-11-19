@@ -14,6 +14,7 @@ test('provisional marks respect assignment, expiration, version and public visib
     create table public.start_lists(class_id uuid primary key,version_id uuid);
     grant select on public.events,public.competition_classes,public.start_lists,public.start_list_versions to anon,authenticated;`);
   await db.exec(readFileSync('supabase/migrations/20261118151405_provisional_live_results.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261119104700_live_results_two_phases.sql','utf8'));
   const user='00000000-0000-0000-0000-000000000001', event='00000000-0000-0000-0000-000000000002', cls='00000000-0000-0000-0000-000000000003', ver='00000000-0000-0000-0000-000000000004', other='00000000-0000-0000-0000-000000000005';
   await db.query("insert into auth.users values ($1,'{\"equidate_external\":true}',null)",[user]);
   await db.query("insert into events values ($1,current_date,'published','jumping'),($2,current_date,'published','jumping')",[event,other]);
@@ -23,9 +24,15 @@ test('provisional marks respect assignment, expiration, version and public visib
   await db.query('insert into start_lists values($1,$2)',[cls,ver]);
   const save=(ev=event,v=ver,pos=1)=>db.query('select equidate_external_save_live_result($1,$2,$3,$4,$5,4,65.25)',[user,ev,cls,v,pos]);
   await save(); await save(event,ver,2);
+  const phases=(f:number|null,t:number|null)=>db.query('select equidate_external_save_live_result_phases($1,$2,$3,$4,1,4,65.25,$5,$6)',[user,event,cls,ver,f,t]);
+  await phases(8,42.33);
+  assert.deepEqual((await db.query('select phase2_faults,phase2_seconds from provisional_live_results where position=1')).rows[0],{phase2_faults:8,phase2_seconds:'42.33'});
+  await assert.rejects(phases(2,null));
+  assert.equal((await db.query<{phase2_faults:number}>('select phase2_faults from provisional_live_results where position=1')).rows[0].phase2_faults,8);
+  await phases(null,null);
   await assert.rejects(save(other)); await assert.rejects(save(event,other)); await assert.rejects(save(event,ver,3));
   await db.exec('set role anon'); const visible=await db.query<{position:number}>('select position from provisional_live_results');assert.equal(visible.rows.length,1);assert.equal(visible.rows[0].position,1);await db.exec('reset role');
-  await db.query('delete from external_event_assignments where user_id=$1',[user]);await assert.rejects(save());
+  await db.query('delete from external_event_assignments where user_id=$1',[user]);await assert.rejects(save());await assert.rejects(phases(0,40));
   await db.query('insert into external_event_assignments values($1,$2)',[user,event]);
   await db.query("update auth.users set banned_until=now()+interval '1 day'");await assert.rejects(save());
   await db.query('update auth.users set banned_until=null');await db.query("update events set end_date=current_date-3 where id=$1",[event]);await assert.rejects(save());

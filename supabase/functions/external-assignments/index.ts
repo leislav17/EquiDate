@@ -38,13 +38,13 @@ Deno.serve(async (req: Request) => {
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
     if (body.action === 'live_save') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !Number.isInteger(body.faults) || typeof body.seconds !== 'number' || !Number.isFinite(body.seconds)) return reply({ error: 'Datos inválidos.' }, 400);
-      const { error } = await service.rpc('equidate_external_save_live_result', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds });
+      const { error } = await service.rpc('equidate_external_save_live_result_phases', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds, second_faults: body.secondFaults ?? null, second_seconds: body.secondSeconds ?? null });
       if (error) return reply({ error: 'No se pudo guardar. Comprobá tu acceso y que el listado no haya cambiado.' }, 403);
       return reply({ success: true });
     }
     const { data: assignment, error: assignmentError } = await service.from('external_event_assignments').select('event:events(id,name,end_date,discipline)').eq('user_id', auth.user.id).eq('event_id', body.eventId).maybeSingle();
     if (assignmentError || !assignment?.event || !isCurrent(assignment.event.end_date) || (assignment.event.discipline && assignment.event.discipline !== 'jumping')) return reply({ error: 'Concurso no autorizado.' }, 403);
-    const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
+    const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);
     const ids = (classes || []).map((c: {id:string}) => c.id);
     if (!ids.length) return reply({ classes: [] });
@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
     if (!versionIds.length) return reply({ classes: [] });
     const [versions, marks] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
-      service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds').in('class_id', ids).in('start_version_id', versionIds),
+      service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
     ]);
     if (versions.error || marks.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {

@@ -16,6 +16,7 @@ test('provisional marks respect assignment, expiration, version and public visib
   await db.exec(readFileSync('supabase/migrations/20261118151405_provisional_live_results.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261119104700_live_results_two_phases.sql','utf8'));
   await db.exec(readFileSync('supabase/migrations/20261119105343_live_tracking.sql','utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261119230837_live_reorder.sql','utf8'));
   const user='00000000-0000-0000-0000-000000000001', event='00000000-0000-0000-0000-000000000002', cls='00000000-0000-0000-0000-000000000003', ver='00000000-0000-0000-0000-000000000004', other='00000000-0000-0000-0000-000000000005';
   await db.query("insert into auth.users values ($1,'{\"equidate_external\":true}',null)",[user]);
   await db.query("insert into events values ($1,current_date,'published','jumping'),($2,current_date,'published','jumping')",[event,other]);
@@ -43,9 +44,18 @@ test('provisional marks respect assignment, expiration, version and public visib
   assert.deepEqual((await db.query<{current_position:number|null;no_shows:number[]}>('select current_position,no_shows from live_tracking')).rows[0],{current_position:null,no_shows:[2]});
   await track(2,'restore'); await track(2,'current');
   assert.equal((await db.query<{current_position:number}>('select current_position from live_tracking')).rows[0].current_position,2);
+  const reorder=(expected:number[],next:number[])=>db.query('select equidate_reorder_live($1,$2,$3,$4,$5,$6)',[user,event,cls,ver,expected,next]);
+  await reorder([1,2],[2,1]);
+  await assert.rejects(reorder([1,2],[2,1])); // concurrent update
+  await assert.rejects(reorder([2,1],[1,1])); // not a permutation
+  assert.equal((await db.query<{obstacle_faults:number}>('select obstacle_faults from provisional_live_results where position=1')).rows[0].obstacle_faults,0);
+  await db.query('delete from provisional_live_results where position=1');
+  await saveAndAdvance(2);
+  assert.equal((await db.query<{current_position:number}>('select current_position from live_tracking')).rows[0].current_position,1); // next according to live order
+  await save(); // restore public fixture
   await assert.rejects(save(other)); await assert.rejects(save(event,other)); await assert.rejects(save(event,ver,3));
   await db.exec('set role anon'); const visible=await db.query<{position:number}>('select position from provisional_live_results');assert.equal(visible.rows.length,1);assert.equal(visible.rows[0].position,1);await db.exec('reset role');
-  await db.query('delete from external_event_assignments where user_id=$1',[user]);await assert.rejects(save());await assert.rejects(phases(0,40));await assert.rejects(track(1,'current'));await assert.rejects(saveAndAdvance(1));
+  await db.query('delete from external_event_assignments where user_id=$1',[user]);await assert.rejects(save());await assert.rejects(phases(0,40));await assert.rejects(track(1,'current'));await assert.rejects(saveAndAdvance(1));await assert.rejects(reorder([2,1],[1,2]));
   await db.query('insert into external_event_assignments values($1,$2)',[user,event]);
   await db.query("update auth.users set banned_until=now()+interval '1 day'");await assert.rejects(save());
   await db.query('update auth.users set banned_until=null');await db.query("update events set end_date=current_date-3 where id=$1",[event]);await assert.rejects(save());

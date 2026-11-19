@@ -241,7 +241,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (active) { setVerifiedAdmin(!error && data === true); setVerifiedToken(session.access_token); setPermissionLoading(false); }
     })().catch(() => { if (active) { setVerifiedAdmin(false); setVerifiedToken(session.access_token); setPermissionLoading(false); } });
     return () => { active = false; };
-  }, [session]);
+  }, [session?.access_token]);
   const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
     () => resourceHash(readLocation()).startsWith('#document-') ? resourceHash(readLocation()).slice(10) : null
   );

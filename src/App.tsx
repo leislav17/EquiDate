@@ -102,15 +102,15 @@ const AppContent: React.FC = () => {
         ) : transmissionId ? (
           <TransmissionPage dayId={transmissionId} />
         ) : activeView === 'admin' ? (
-          isAuthLoading ? (
+          session?.user?.app_metadata?.equidate_external === true && !isAdmin ? (
+            <ExternalAccount key={session.user.id} />
+          ) : isAuthLoading ? (
             <div className="w-full min-h-[calc(100vh-64px)] flex items-center justify-center p-8 text-neutral-500 font-medium text-sm">
               <div className="w-5 h-5 border-2 border-[#123E59] border-t-transparent rounded-full animate-spin mr-3" />
               <span>Verificando acceso…</span>
             </div>
           ) : isAdmin ? (
             usefulAdmin ? <UsefulInfo admin /> : riderAdmin ? <RiderSearch admin /> : <AdminDashboard />
-          ) : session?.user?.app_metadata?.equidate_external === true ? (
-            <ExternalAccount />
           ) : (
             <AdminLogin />
           )

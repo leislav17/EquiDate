@@ -33,9 +33,15 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking') {
+  if (body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
+    if (body.action === 'live_reorder') {
+      if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Array.isArray(body.expectedOrder) || !Array.isArray(body.newOrder) || !body.expectedOrder.every(Number.isInteger) || !body.newOrder.every(Number.isInteger)) return reply({ error: 'Datos inválidos.' }, 400);
+      const { error } = await service.rpc('equidate_reorder_live', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, expected_order: body.expectedOrder, new_order: body.newOrder });
+      if (error) return reply({ error: 'El orden cambió o tu acceso no está vigente. Actualizá e intentá nuevamente.' }, 409);
+      return reply({ success: true });
+    }
     if (body.action === 'live_tracking') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !['current','absent','restore'].includes(body.operation)) return reply({ error: 'Datos inválidos.' }, 400);
       const { error } = await service.rpc('equidate_live_tracking_action', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, action: body.operation });
@@ -61,7 +67,7 @@ Deno.serve(async (req: Request) => {
     const [versions, marks, tracking] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
-      service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows').in('class_id', ids).in('start_version_id', versionIds),
+      service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows,live_order').in('class_id', ids).in('start_version_id', versionIds),
     ]);
     if (versions.error || marks.error || tracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {

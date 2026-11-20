@@ -2,7 +2,7 @@ import {ManualLiveRow} from './ManualLiveRow';
 import {ManualEntryForm} from './ManualEntryForm';
 import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, GripVertical, Play } from 'lucide-react';
+import { ArrowLeft, GripVertical, Play, Plus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { hasTwoPhases } from '../../utils/livePhases';
 import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
@@ -97,7 +97,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
       {!classes.length && <p className="text-sm text-neutral-600">No hay pruebas con orden de ingreso publicado.</p>}
       {chosen && !chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs"><button type="button" disabled={starting} onClick={()=>void startLive()} className="inline-flex items-center gap-2 bg-[#A61E4D] text-white px-4 min-h-11 rounded-lg font-bold disabled:opacity-50"><Play size={18}/>{starting?'Iniciando…':'Iniciar carga de resultados en vivo'}</button></div>}
       {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs">
-        <button className="font-bold text-[#123E59] underline" onClick={()=>setEditing(editing==='new'?null:'new')}>Agregar binomio</button>
+        <div className="flex justify-end mb-4"><button type="button" className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-[#A61E4D] text-white text-sm font-bold hover:bg-[#85163c]" onClick={()=>setEditing(editing==='new'?null:'new')}><Plus size={18} aria-hidden="true"/>Agregar binomio</button></div>
         {editing&&<ManualEntryForm key={editing==='new'?'new':editing.id} classId={chosen.id} eventId={eventId} twoPhases={twoPhases} row={editing==='new'?undefined:editing} done={()=>{setEditing(null);void load();}}/>}
         <h2 className="font-bold text-[#123E59]">Orden de ingreso</h2>
         <p className="text-xs text-neutral-500 mt-1 mb-4">Arrastrá el ícono para cambiar el orden del vivo. Las marcas sin categoría no se muestran públicamente.</p>

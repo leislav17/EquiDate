@@ -1,7 +1,7 @@
 /** Temporary UI state only: never store contest data, rider names, searches or auth. */
 export const NAVIGATION_STORAGE_KEY = 'equidate:navigation:v1';
 export const NAVIGATION_TTL = 4 * 60 * 60 * 1000;
-export interface NavigationEntry { at: number; open?: string[]; info?: boolean; scroll?: number; selection?: { kind: 'structured' | 'document'; id: string } | null }
+export interface NavigationEntry { at: number; open?: string[]; info?: boolean; scroll?: number; selection?: { kind: 'structured' | 'document' | 'live-results'; id: string } | null }
 export interface NavigationStorage { getItem(key: string): string | null; setItem(key: string, value: string): void }
 function browserStorage(): NavigationStorage | undefined {
   try { return typeof window === 'undefined' ? undefined : window.sessionStorage; } catch { return undefined; }
@@ -20,7 +20,7 @@ function readAll(storage: NavigationStorage | undefined, now: number): Record<st
       if (typeof r.info === 'boolean') clean.info = r.info;
       if (typeof r.scroll === 'number' && Number.isFinite(r.scroll) && r.scroll >= 0) clean.scroll = Math.min(r.scroll, 1000000);
       if (r.selection === null) clean.selection = null;
-      else if (r.selection && ['structured','document'].includes(r.selection.kind) && typeof r.selection.id === 'string' && r.selection.id.length <= 150) clean.selection = { kind: r.selection.kind, id: r.selection.id };
+      else if (r.selection && ['structured','document','live-results'].includes(r.selection.kind) && typeof r.selection.id === 'string' && r.selection.id.length <= 150) clean.selection = { kind: r.selection.kind, id: r.selection.id };
       return [key, clean];
     }));
   } catch { return {}; }

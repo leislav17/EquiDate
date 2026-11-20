@@ -33,7 +33,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
+  if (body.action === 'manual_save' || body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
     if (body.action === 'live_reorder') {
@@ -56,6 +56,17 @@ Deno.serve(async (req: Request) => {
     }
     const { data: assignment, error: assignmentError } = await service.from('external_event_assignments').select('event:events(id,name,end_date,discipline)').eq('user_id', auth.user.id).eq('event_id', body.eventId).maybeSingle();
     if (assignmentError || !assignment?.event || !isCurrent(assignment.event.end_date) || (assignment.event.discipline && assignment.event.discipline !== 'jumping')) return reply({ error: 'Concurso no autorizado.' }, 403);
+    if (body.action === 'manual_save') {
+      const {data: allowed} = await service.from('competition_classes').select('id').eq('event_id',body.eventId).eq('id',body.classId).maybeSingle();
+      if (!allowed) return reply({error:'Prueba no autorizada.'},403);
+      const row = body.row;
+      if (!row || typeof row.rider !== 'string' || typeof row.horse !== 'string') return reply({error:'Binomio inválido.'},400);
+      const values = {rider:row.rider.trim(),horse:row.horse.trim(),category:row.category || '',position:row.position,
+        obstacle_faults:row.obstacle_faults,time_seconds:row.time_seconds,phase2_faults:row.phase2_faults,phase2_seconds:row.phase2_seconds};
+      const result = body.edit ? await service.from('manual_live_entries').update(values).eq('class_id',allowed.id).eq('id',row.id).select('id').single()
+        : await service.from('manual_live_entries').insert({...values,id:row.id,class_id:allowed.id});
+      return result.error ? reply({error:'Revisá los datos del binomio.'},400) : reply({success:true});
+    }
     const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);
     const ids = (classes || []).map((c: {id:string}) => c.id);
@@ -63,7 +74,8 @@ Deno.serve(async (req: Request) => {
     const { data: heads, error: headsError } = await service.from('start_lists').select('class_id,version_id').in('class_id', ids).not('version_id','is',null);
     if (headsError) return reply({ error: 'No se pudieron consultar los listados.' }, 500);
     const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
-    if (!versionIds.length) return reply({ classes: [] });
+    const manual = await service.from('manual_live_entries').select('*').in('class_id',ids).order('created_at');
+    if (manual.error) return reply({error:'No se pudieron leer los binomios.'},500);
     const [versions, marks, tracking] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
@@ -73,7 +85,7 @@ Deno.serve(async (req: Request) => {
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
       const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
       const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return version ? [{ ...c, versionId: version.id, entries: version.entries, tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version.id) }] : [];
+      return [{ ...c, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

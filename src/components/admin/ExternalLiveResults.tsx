@@ -1,3 +1,5 @@
+import {ManualEntryForm} from './ManualEntryForm';
+import {resolveManual,type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -6,7 +8,7 @@ import { moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {manual?:ManualEntry[];id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
@@ -15,6 +17,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const [error,setError]=useState(''), [message,setMessage]=useState('');
   const [dragging,setDragging]=useState<number|null>(null);
   const [previewOrder,setPreviewOrder]=useState<number[]|null>(null);
+  const [editing,setEditing]=useState<ManualEntry|'new'|null>(null);
   const tableRegion=useRef<HTMLDivElement>(null);
   const drag=useRef<{position:number;target:number;startX:number;startY:number;moved:boolean}|null>(null);
   const load=async()=>{
@@ -43,7 +46,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     else {await load();setMessage('Orden del vivo actualizado.');}
     setBusy(null);
   };
-  const changeClass=(id:string)=>{setPreviewOrder(null);setClassId(id);setDrafts({});setError('');setMessage('');};
+  const changeClass=(id:string)=>{setPreviewOrder(null);setClassId(id);setEditing(null);setDrafts({});setError('');setMessage('');};
   const change=(pos:number,key:'faults'|'seconds'|'secondFaults'|'secondSeconds',value:string,mark?:Mark)=>setDrafts(current=>({...current,[pos]:{...(current[pos] || {faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''}),[key]:value}}));
   const save=async(row:Participant,mark?:Mark)=>{
     if(!chosen)return;
@@ -70,6 +73,8 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
       <label className="block text-sm font-bold max-w-xl">Prueba<select className={input+' mt-1'} value={classId} onChange={e=>changeClass(e.target.value)}><option value="">Elegí una prueba</option>{classes.map(c=><option key={c.id} value={c.id}>{c.event_date.split('-').reverse().join('/')} · Prueba {c.number} — {c.name}</option>)}</select></label>
       {!classes.length && <p className="text-sm text-neutral-600">No hay pruebas con orden de ingreso publicado.</p>}
       {chosen && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs">
+        <button className="font-bold text-[#123E59] underline" onClick={()=>setEditing(editing==='new'?null:'new')}>Agregar binomio</button>
+        {editing&&<ManualEntryForm key={editing==='new'?'new':editing.id} classId={chosen.id} eventId={eventId} twoPhases={twoPhases} row={editing==='new'?undefined:editing} done={()=>{setEditing(null);void load();}}/>}
         <h2 className="font-bold text-[#123E59]">Orden de ingreso</h2>
         <p className="text-xs text-neutral-500 mt-1 mb-4">Arrastrá el ícono para cambiar el orden del vivo. Se conserva el número original; las marcas sin categoría no se muestran públicamente.</p>
         <div className="overflow-auto max-h-[70vh] border border-neutral-200 rounded-xl" role="region" aria-label="Tabla de carga de resultados" tabIndex={0}
@@ -101,6 +106,11 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
             })}</tbody>
           </table>
         </div>
+        {resolveManual(chosen.manual??[],chosen.entries).map(row=><div key={row.id} className="border-t py-3">
+          <strong>{row.rider} · {row.horse}</strong> · {row.target ? 'Asociado al ingreso '+row.target : row.position??'Sin número'} · {row.time_seconds==null?'Pendiente':row.obstacle_faults+' faltas · '+row.time_seconds+' s'}
+          <button className="ml-3 underline" onClick={()=>setEditing(row)}>Editar binomio y marca</button>
+          {!row.target&&row.suggestions.map(index=>{const candidate=chosen.entries[index];return <button key={index} className="block underline" onClick={()=>setEditing({...row,rider:candidate.rider,horse:candidate.horse,position:candidate.position,category:candidate.category||row.category})}>Revisar coincidencia con #{candidate.position} {candidate.rider} · {candidate.horse}</button>;})}
+        </div>)}
       </div>}
     </>}
     {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-green-700 text-sm">{message}</p>}

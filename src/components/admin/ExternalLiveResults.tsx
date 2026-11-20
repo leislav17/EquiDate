@@ -9,7 +9,7 @@ import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../util
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {started:boolean;manual?:ManualEntry[];combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {started:boolean;manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
@@ -44,6 +44,14 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     setBusy(position);setError('');setMessage('');
     const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_tracking',eventId,classId:chosen.id,startVersionId:chosen.versionId,position,operation}});
     if(error || !data?.success) setError('No se pudo actualizar el estado. Verificá tu acceso y actualizá el listado.');
+    else {await load();setMessage('Estado actualizado.');}
+    setBusy(null);
+  };
+  const setManualTracking=async(manualId:string,operation:'current'|'absent'|'restore')=>{
+    if(!chosen)return;
+    setBusy(-1);setError('');setMessage('');
+    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'manual_tracking',eventId,classId:chosen.id,manualId,operation}});
+    if(error||!data?.success)setError('No se pudo actualizar el estado. Verificá tu acceso e intentá nuevamente.');
     else {await load();setMessage('Estado actualizado.');}
     setBusy(null);
   };
@@ -103,7 +111,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               <tr><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th>{twoPhases&&<><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th></>}</tr>
             </thead>
             <tbody>{ordered.map((key,index)=>{
-              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} twoPhases={twoPhases} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
+              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
               const row=chosen.entries.find(item=>`p:${item.position}`===key); if(!row)return null;
               const mark=chosen.marks.find(m=>m.position===row.position);
               const draft=drafts[row.position]||{faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''};

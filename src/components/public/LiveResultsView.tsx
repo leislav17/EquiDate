@@ -13,12 +13,13 @@ export const LiveResultsView: React.FC<{classId:string}> = ({classId}) => {
   const list=publishedStartList(classId,startHeads,startVersions);
   const [tracking,setTracking]=useState<{start_version_id:string;current_position:number|null;no_shows:number[];live_order:number[]|null}|null>(null);
   const [manual,setManual]=useState<ManualEntry[]>([]);
+  const [manualTracking,setManualTracking]=useState<{current_manual_id:string|null;no_shows:string[]}|null>(null);
   const [combined,setCombined]=useState<string[]|null>(null);
   const [marks,setMarks]=useState<Mark[]>([]), [error,setError]=useState(''), [loading,setLoading]=useState(true);
   useEffect(()=>{
     let active=true;
     const refresh=async()=>{const [result,state,extra]=await Promise.all([supabase.from('provisional_live_results').select('position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds,start_version_id').eq('class_id',classId),supabase.from('live_tracking').select('start_version_id,current_position,no_shows,live_order').eq('class_id',classId).eq('start_version_id',list?.id??'00000000-0000-0000-0000-000000000000').maybeSingle(),supabase.from('manual_live_entries').select('*').eq('class_id',classId).order('created_at')]);const {data,error}=result;if(!active)return;if(error||state.error||extra.error)setError('No se pudieron cargar las marcas provisorias.');else {setError('');setManual(extra.data??[]);setMarks(data||[]);setTracking(state.data);}setLoading(false);};
-    const refreshOrder=async()=>{const result=list?.id ? await supabase.from('live_combined_order').select('entries').eq('class_id',classId).eq('start_version_id',list.id).maybeSingle() : await supabase.from('live_manual_only_order').select('entries').eq('class_id',classId).maybeSingle();if(active && !result.error)setCombined(result.data?.entries??null);};
+    const refreshOrder=async()=>{const [result,state]=await Promise.all([list?.id ? supabase.from('live_combined_order').select('entries').eq('class_id',classId).eq('start_version_id',list.id).maybeSingle() : supabase.from('live_manual_only_order').select('entries').eq('class_id',classId).maybeSingle(),supabase.from('manual_live_tracking').select('current_manual_id,no_shows').eq('class_id',classId).maybeSingle()]);if(active && !result.error)setCombined(result.data?.entries??null);if(active && !state.error)setManualTracking(state.data);};
     void refresh();void refreshOrder();const timer=window.setInterval(()=>{void refresh();void refreshOrder();},15000);return()=>{active=false;window.clearInterval(timer);};
   },[classId,list?.id]);
   const resolved=resolveManual(manual,list?.entries??[]);
@@ -30,7 +31,8 @@ export const LiveResultsView: React.FC<{classId:string}> = ({classId}) => {
     const row=published?.row??added, mark=published?.mark??added;
     if(!row || !row.category?.trim())return null;
     const pos=published?.row.position;
-    const status=pos!=null && tracking?.start_version_id===list?.id && tracking?.current_position===pos ? 'En pista' : pos!=null && tracking?.start_version_id===list?.id && tracking?.no_shows?.includes(pos) ? 'No se presentó' : mark?.time_seconds!=null ? 'Resultado cargado':'Pendiente';
+    const manualId=added?.id ?? resolved.find(m=>m.target===pos)?.id;
+    const status=manualId && manualTracking?.current_manual_id===manualId ? 'En pista' : manualId && manualTracking?.no_shows?.includes(manualId) ? 'No se presentó' : pos!=null && tracking?.start_version_id===list?.id && tracking?.current_position===pos ? 'En pista' : pos!=null && tracking?.start_version_id===list?.id && tracking?.no_shows?.includes(pos) ? 'No se presentó' : mark?.time_seconds!=null ? 'Resultado cargado':'Pendiente';
     return <tr key={key}><td className="p-3"><span className="font-bold text-[#123E59]">{row.rider}</span><span className="block text-neutral-600">{row.horse} · {row.category}</span></td><td className="p-3">{status}</td><td className="p-3">{mark?.obstacle_faults??'-'}</td><td className="p-3">{mark?.time_seconds!=null?Number(mark.time_seconds).toFixed(2)+' s':'-'}</td>{hasTwoPhases(entry?.description)&&<><td className="p-3">{mark?.phase2_faults??'-'}</td><td className="p-3">{mark?.phase2_seconds!=null?Number(mark.phase2_seconds).toFixed(2)+' s':'-'}</td></>}</tr>;
   })}</tbody></table></div>}</div></div></section>;
 };

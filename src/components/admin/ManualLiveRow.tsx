@@ -38,7 +38,7 @@ export function ManualLiveRow({ row, eventId, classId, twoPhases, onSaved }: {
   return <tr className="bg-white">
     <td className="p-2 border-t border-neutral-200 min-w-72">
       <span className="font-bold text-[#123E59]">{row.rider}</span>
-      <span className="block text-xs text-neutral-500">Orden: {row.entry_label ?? row.position ?? 'Sin número'}</span>
+      
       <span className="block text-neutral-600">{row.horse} · {row.category || 'Sin categoría'}</span>
       <span className="block text-xs font-bold text-[#A61E4D]">{row.time_seconds == null ? 'Pendiente' : 'Resultado cargado'}</span>
     </td>

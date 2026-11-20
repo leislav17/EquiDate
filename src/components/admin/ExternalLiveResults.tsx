@@ -5,22 +5,22 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical, Play } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { hasTwoPhases } from '../../utils/livePhases';
-import { moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
+import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {started:boolean;manual?:ManualEntry[];id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {started:boolean;manual?:ManualEntry[];combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
   const [drafts,setDrafts]=useState<Record<number,{faults:string;seconds:string;secondFaults:string;secondSeconds:string}>>({});
   const [loading,setLoading]=useState(true), [busy,setBusy]=useState<number|null>(null);
   const [error,setError]=useState(''), [message,setMessage]=useState('');
-  const [dragging,setDragging]=useState<number|null>(null);
-  const [previewOrder,setPreviewOrder]=useState<number[]|null>(null);
+  const [dragging,setDragging]=useState<string|null>(null);
+  const [previewOrder,setPreviewOrder]=useState<string[]|null>(null);
   const [editing,setEditing]=useState<ManualEntry|'new'|null>(null);
   const tableRegion=useRef<HTMLDivElement>(null);
-  const drag=useRef<{position:number;target:number;startX:number;startY:number;moved:boolean}|null>(null);
+  const drag=useRef<{position:string;target:string;startX:number;startY:number;moved:boolean}|null>(null);
   const load=async()=>{
     const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_list',eventId}});
     if(error || !Array.isArray(data?.classes)) { setError('No se pudieron cargar las pruebas. Verific� que tu acceso siga vigente.'); setLoading(false); return; }
@@ -47,13 +47,13 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     else {await load();setMessage('Estado actualizado.');}
     setBusy(null);
   };
-  const move=async(position:number,target:number)=>{
+  const move=async(position:string,target:string)=>{
     if(!chosen)return;
-    const order=orderLiveEntries(chosen.entries,chosen.tracking?.live_order).map(row=>row.position);
+    const order=combinedLiveKeys(orderLiveEntries(chosen.entries,chosen.tracking?.live_order).map(row=>row.position), (chosen.manual??[]).map(row=>row.id),chosen.combined?.entries);
     const changed=moveLivePosition(order,position,target);
     if(changed===order)return;
-    setBusy(position);setError('');setMessage('');
-    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_reorder',eventId,classId:chosen.id,startVersionId:chosen.versionId,expectedOrder:order,newOrder:changed}});
+    setBusy(-1);setError('');setMessage('');
+    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'combined_reorder',eventId,classId:chosen.id,startVersionId:chosen.versionId,revision:chosen.combined?.revision??0,order:changed}});
     if(error || !data?.success) {await load();setError('No se pudo cambiar el orden. Se actualiz� el listado; revisalo e intent� nuevamente.');}
     else {await load();setMessage('Orden del vivo actualizado.');}
     setBusy(null);
@@ -75,7 +75,10 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     setBusy(null);
   };
   const input='w-full h-10 px-2 border border-neutral-300 rounded-lg text-sm';
-  const ordered=chosen ? orderLiveEntries(chosen.entries,previewOrder ?? chosen.tracking?.live_order) : [];
+  const ordered=chosen ? combinedLiveKeys(orderLiveEntries(chosen.entries,chosen.tracking?.live_order).map(x=>x.position),(chosen.manual??[]).map(x=>x.id),previewOrder ?? chosen.combined?.entries) : [];
+  const dragButton=(key:string,rider:string,index:number)=><button type="button" disabled={busy!==null} aria-label={`Arrastrar a ${rider}; tambi�n pod�s usar las flechas arriba y abajo`} title="Arrastrar para cambiar el orden" className="min-w-11 min-h-11 inline-flex items-center justify-center text-[#123E59] cursor-grab active:cursor-grabbing touch-none select-none disabled:opacity-50"
+    onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:key,target:key,startX:e.clientX,startY:e.clientY,moved:false};}}
+    onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(key,target);}}}><GripVertical aria-hidden="true" size={20}/></button>;
   const twoPhases=!!chosen && hasTwoPhases(chosen.description);
   return <section className="max-w-6xl mx-auto px-4 py-8 space-y-5">
     <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-[#123E59] min-h-11"><ArrowLeft size={18}/>Volver al concurso</button>
@@ -91,7 +94,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
         <h2 className="font-bold text-[#123E59]">Orden de ingreso</h2>
         <p className="text-xs text-neutral-500 mt-1 mb-4">Arrastr� el �cono para cambiar el orden del vivo. Las marcas sin categor�a no se muestran p�blicamente.</p>
         <div className="overflow-auto max-h-[70vh] border border-neutral-200 rounded-xl" role="region" aria-label="Tabla de carga de resultados" tabIndex={0}
-          onPointerMove={e=>{const d=drag.current;if(!d||!chosen)return;if(Math.hypot(e.clientX-d.startX,e.clientY-d.startY)>5){d.moved=true;setDragging(d.position);} if(!d.moved)return;const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-live-position]');const target=Number(el?.getAttribute('data-live-position'));if(el && Number.isInteger(target) && target!==d.position && target!==d.target){d.target=target;setPreviewOrder(current=>moveLivePosition(current ?? orderLiveEntries(chosen.entries,chosen.tracking?.live_order).map(x=>x.position),d.position,target));}}}
+          onPointerMove={e=>{const d=drag.current;if(!d||!chosen)return;if(Math.hypot(e.clientX-d.startX,e.clientY-d.startY)>5){d.moved=true;setDragging(d.position);} if(!d.moved)return;const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-live-key]');const target=el?.getAttribute('data-live-key');if(target && target!==d.position && target!==d.target){d.target=target;setPreviewOrder(current=>moveLivePosition(current ?? ordered,d.position,target));}}}
           onPointerUp={e=>{const d=drag.current;drag.current=null;setDragging(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);if(d?.moved && d.target!==d.position)void move(d.position,d.target).finally(()=>setPreviewOrder(null));else setPreviewOrder(null);}}
           onPointerCancel={()=>{drag.current=null;setDragging(null);setPreviewOrder(null);}} ref={tableRegion}>
           <table className="w-full min-w-[780px] text-sm text-left border-separate border-spacing-0">
@@ -99,16 +102,16 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               <tr><th rowSpan={2} scope="col" className="p-3">Orden / binomio</th><th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">{twoPhases?'Fase 1':'Resultado'}</th>{twoPhases && <th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">Fase 2</th>}<th rowSpan={2} scope="col" className="p-3">Acci�n</th></tr>
               <tr><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th>{twoPhases&&<><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th></>}</tr>
             </thead>
-            <tbody>{ordered.map((row,index)=>{
+            <tbody>{ordered.map((key,index)=>{
+              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} twoPhases={twoPhases} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
+              const row=chosen.entries.find(item=>`p:${item.position}`===key); if(!row)return null;
               const mark=chosen.marks.find(m=>m.position===row.position);
               const draft=drafts[row.position]||{faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''};
               const isCurrent=chosen.tracking?.current_position===row.position;
               const isAbsent=chosen.tracking?.no_shows?.includes(row.position);
-              return <tr key={row.position} data-live-position={row.position} className={'transition-colors '+(isCurrent?'bg-rose-50 ':'bg-white ')+(dragging===row.position?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
+              return <tr key={key} data-live-key={key} className={'transition-colors '+(isCurrent?'bg-rose-50 ':'bg-white ')+(dragging===key?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
                 <td className="p-2 border-t border-neutral-200 min-w-72"><div className="flex items-start gap-1">
-                  <button type="button" disabled={busy!==null} aria-label={`Arrastrar a ${row.rider}; tambi�n pod�s usar las flechas arriba y abajo`} title="Arrastrar para cambiar el orden" className="min-w-11 min-h-11 flex items-center justify-center text-[#123E59] cursor-grab active:cursor-grabbing touch-none select-none disabled:opacity-50"
-                    onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:row.position,target:row.position,startX:e.clientX,startY:e.clientY,moved:false};}}
-                    onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(row.position,target.position);}}}><GripVertical aria-hidden="true" size={20}/></button>
+                  {dragButton(key,row.rider,index)}
                   <div><span className="font-bold text-[#123E59]">{row.rider}</span><span className="block text-neutral-600">{row.horse}{row.category?' � '+row.category:' � Sin categor�a'}</span><span className="block mt-1 text-xs font-bold text-[#A61E4D]">{isCurrent?'En pista':isAbsent?'No se present�':mark?'Resultado cargado':'Pendiente'}</span><div className="flex flex-wrap gap-2 mt-1"><button disabled={busy!==null||isCurrent||isAbsent} onClick={()=>void setTracking(row.position,'current')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">Marcar en pista</button>{!mark&&<button disabled={busy!==null} onClick={()=>void setTracking(row.position,isAbsent?'restore':'absent')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">{isAbsent?'Volver a pendiente':'No se present�'}</button>}</div></div>
                 </div></td>
                 <td className="p-2 border-t border-neutral-200 min-w-24"><input aria-label={`Faltas ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="numeric" value={draft.faults} onChange={e=>change(row.position,'faults',e.target.value,mark)}/></td>
@@ -116,7 +119,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
                 {twoPhases&&<><td className="p-2 border-t border-neutral-200 min-w-24"><input aria-label={`Faltas fase 2 de ${row.rider}`} className={input} inputMode="numeric" value={draft.secondFaults} onChange={e=>change(row.position,'secondFaults',e.target.value,mark)}/></td><td className="p-2 border-t border-neutral-200 min-w-28"><input aria-label={`Tiempo fase 2 de ${row.rider}`} className={input} inputMode="decimal" value={draft.secondSeconds} onChange={e=>change(row.position,'secondSeconds',e.target.value,mark)}/></td></>}
                 <td className="p-2 border-t border-neutral-200"><button disabled={busy!==null||isAbsent} onClick={()=>void save(row,mark)} className="bg-[#123E59] text-white px-4 h-10 rounded-lg text-sm font-bold disabled:opacity-50">{busy===row.position?'Guardando.':mark?'Corregir':'Guardar'}</button></td>
               </tr>;
-            })}{(chosen.manual ?? []).map(row => <ManualLiveRow key={row.id} row={row} eventId={eventId} classId={chosen.id} twoPhases={twoPhases} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} />)}</tbody>
+            })}</tbody>
           </table>
         </div>
       </div>}

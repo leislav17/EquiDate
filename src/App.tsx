@@ -17,6 +17,7 @@ import { useNavigationScroll } from './hooks/useNavigationSession';
 import { trackPage } from './lib/analytics';
 import { disciplineLabels, listDiscipline } from './utils/disciplines';
 import { eventPath, resourceHash, resourceSuffix } from './utils/navigation';
+import { resolveShareTitle } from './utils/shareMetadata';
 
 const AppContent: React.FC = () => {
   const {
@@ -73,6 +74,12 @@ const AppContent: React.FC = () => {
     document.title = title;
     trackPage(window.location.href);
   }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, liveResultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, discipline]);
+
+  useEffect(() => {
+    const ogTitleMeta = document.querySelector('meta[property="og:title"]');
+    if (!ogTitleMeta) return;
+    ogTitleMeta.setAttribute('content', resolveShareTitle(routeLocation, events));
+  }, [routeLocation, events]);
 
   // If a document is selected to be viewed, render ONLY the dedicated document view:
   // - No header "SALTO ECUESTRE / Concursos / Administración"

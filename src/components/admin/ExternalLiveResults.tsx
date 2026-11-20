@@ -9,7 +9,7 @@ import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../util
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {started:boolean;publicVisible:boolean;manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {started:boolean;publicVisible:boolean;liveFormat:'double_round'|null;roundQualifiers:string[];manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
@@ -22,10 +22,11 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const tableRegion=useRef<HTMLDivElement>(null);
   const drag=useRef<{position:string;target:string;startX:number;startY:number;moved:boolean}|null>(null);
   const load=async()=>{
-    const [result,sharing]=await Promise.all([supabase.functions.invoke('external-assignments',{body:{action:'live_list',eventId}}),supabase.functions.invoke('live-visibility',{body:{action:'list',eventId}})]);
-    if(result.error || !Array.isArray(result.data?.classes) || sharing.error || !Array.isArray(sharing.data?.classes)) { setError('No se pudieron cargar las pruebas. Verificá que tu acceso siga vigente.'); setLoading(false); return; }
+    const [result,sharing,rounds]=await Promise.all([supabase.functions.invoke('external-assignments',{body:{action:'live_list',eventId}}),supabase.functions.invoke('live-visibility',{body:{action:'list',eventId}}),supabase.functions.invoke('double-round',{body:{action:'list',eventId}})]);
+    if(result.error || !Array.isArray(result.data?.classes) || sharing.error || !Array.isArray(sharing.data?.classes) || rounds.error || !Array.isArray(rounds.data?.classes) || !Array.isArray(rounds.data?.qualifiers)) { setError('No se pudieron cargar las pruebas. Verificá que tu acceso siga vigente.'); setLoading(false); return; }
     const visibility=new Map<string,boolean>(sharing.data.classes.map((c:{class_id:string;public_visible:boolean})=>[c.class_id,c.public_visible]));
-    setClasses(result.data.classes.map((c:LiveClass)=>({...c,publicVisible:visibility.get(c.id)??false}))); setLoading(false);
+    const formats=new Map<string,'double_round'|null>(rounds.data.classes.map((c:{id:string;live_format:'double_round'|null})=>[c.id,c.live_format]));
+    setClasses(result.data.classes.map((c:LiveClass)=>({...c,publicVisible:visibility.get(c.id)??false,liveFormat:formats.get(c.id)??null,roundQualifiers:rounds.data.qualifiers.filter((q:{class_id:string})=>q.class_id===c.id).map((q:{entry_key:string})=>q.entry_key)}))); setLoading(false);
   };
   useEffect(()=>{void load();},[eventId]);
   const chosen=classes.find(c=>c.id===classId);
@@ -69,6 +70,15 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     else {await load();setMessage('Estado actualizado.');}
     setBusy(null);
   };
+  const setQualified=async(key:string,qualified:boolean)=>{
+    if(!chosen)return;
+    setBusy(-1);setError('');setMessage('');
+    const manual=key.startsWith('m:');
+    const {data,error}=await supabase.functions.invoke('double-round',{body:{action:'set',eventId,classId:chosen.id,startVersionId:manual?null:chosen.versionId,manualId:manual?key.slice(2):null,position:manual?null:Number(key.slice(2)),qualified}});
+    if(error||!data?.success)setError('No se pudo actualizar la selección. Verificá tu acceso e intentá nuevamente.');
+    else {await load();setMessage(qualified?'Binomio seleccionado para el segundo recorrido.':'Binomio quitado del segundo recorrido. Sus marcas se conservan.');}
+    setBusy(null);
+  };
   const move=async(position:string,target:string)=>{
     if(!chosen)return;
     const order=combinedLiveKeys(orderLiveEntries(chosen.entries,chosen.tracking?.live_order).map(row=>row.position), (chosen.manual??[]).map(row=>row.id),chosen.combined?.entries);
@@ -88,10 +98,12 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     const secondsText=values.seconds.trim().replace(',','.');
     if (!/^\d+$/.test(values.faults) || Number(values.faults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondsText) || Number(secondsText)>9999999) {setError('Ingresá faltas enteras y un tiempo válido con hasta dos decimales.');return;}
     const secondSeconds=values.secondSeconds.trim().replace(',','.');
-    const hasSecond=hasTwoPhases(chosen.description) && (values.secondFaults.trim() !== '' || secondSeconds !== '');
+    const isDouble=chosen.liveFormat==='double_round';
+    const qualified=chosen.roundQualifiers.includes(`p:${chosen.versionId}:${row.position}`);
+    const hasSecond=(isDouble?qualified:hasTwoPhases(chosen.description)) && (values.secondFaults.trim() !== '' || secondSeconds !== '');
     if (hasSecond && (!/^\d+$/.test(values.secondFaults) || Number(values.secondFaults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondSeconds) || Number(secondSeconds)>9999999)) {setError('Completá faltas y tiempo válidos para la segunda fase, o dejá ambos campos vacíos.');return;}
     setError('');setMessage('');setBusy(row.position);
-    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_save',eventId,classId:chosen.id,startVersionId:chosen.versionId,position:row.position,faults:Number(values.faults),seconds:Number(secondsText),secondFaults:hasSecond?Number(values.secondFaults):null,secondSeconds:hasSecond?Number(secondSeconds):null}});
+    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_save',eventId,classId:chosen.id,startVersionId:chosen.versionId,position:row.position,faults:Number(values.faults),seconds:Number(secondsText),secondFaults:hasSecond?Number(values.secondFaults):isDouble&&!qualified?mark?.phase2_faults??null:null,secondSeconds:hasSecond?Number(secondSeconds):isDouble&&!qualified?mark?.phase2_seconds??null:null}});
     if(error || !data?.success) setError('No se pudo guardar. Verificá el acceso y actualizá si cambió el orden de ingreso.');
     else {await load();setDrafts(current=>{const next={...current};delete next[row.position];return next;});setMessage('Marca guardada como provisoria.');}
     setBusy(null);
@@ -101,7 +113,9 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const dragButton=(key:string,rider:string,index:number)=><button type="button" disabled={busy!==null} aria-label={`Arrastrar a ${rider}; también podés usar las flechas arriba y abajo`} title="Arrastrar para cambiar el orden" className="min-w-11 min-h-11 inline-flex items-center justify-center text-[#123E59] cursor-grab active:cursor-grabbing touch-none select-none disabled:opacity-50"
     onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:key,target:key,startX:e.clientX,startY:e.clientY,moved:false};}}
     onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(key,target);}}}><GripVertical aria-hidden="true" size={20}/></button>;
-  const twoPhases=!!chosen && hasTwoPhases(chosen.description);
+  const isDouble=chosen?.liveFormat==='double_round';
+  const twoPhases=!!chosen && (isDouble||hasTwoPhases(chosen.description));
+  const qualifierBox=(key:string,checked:boolean,rider:string)=><label className="flex items-center gap-2 mt-2 text-xs font-semibold text-[#123E59]"><input type="checkbox" checked={checked} disabled={busy!==null} onChange={e=>void setQualified(key,e.target.checked)} aria-label={`Pasa al segundo recorrido: ${rider}`} className="h-4 w-4 accent-[#A61E4D]"/>Pasa al segundo recorrido</label>;
   return <section className="equidate-container py-6 sm:py-8 space-y-5">
     <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-[#123E59] min-h-11"><ArrowLeft size={18}/>Volver al concurso</button>
     <h1 className="text-2xl font-display font-black text-[#123E59]">Resultados en vivo</h1>
@@ -121,24 +135,25 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
           onPointerCancel={()=>{drag.current=null;setDragging(null);setPreviewOrder(null);}} ref={tableRegion}>
           <table className="block w-full md:table md:min-w-[780px] text-sm text-left md:border-separate md:border-spacing-0">
             <thead className="hidden md:table-header-group md:sticky md:top-0 md:z-10 bg-[#123E59] text-white">
-              <tr><th rowSpan={2} scope="col" className="p-3">Orden / binomio</th><th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">{twoPhases?'Fase 1':'Resultado'}</th>{twoPhases && <th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">Fase 2</th>}<th rowSpan={2} scope="col" className="p-3">Acción</th></tr>
+              <tr><th rowSpan={2} scope="col" className="p-3">Orden / binomio</th><th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">{isDouble?'Recorrido 1':twoPhases?'Fase 1':'Resultado'}</th>{twoPhases && <th colSpan={2} scope="colgroup" className="p-2 text-center border-l border-white/20">{isDouble?'Recorrido 2':'Fase 2'}</th>}<th rowSpan={2} scope="col" className="p-3">Acción</th></tr>
               <tr><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th>{twoPhases&&<><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th></>}</tr>
             </thead>
             <tbody className="block divide-y divide-neutral-200 md:table-row-group md:divide-y-0">{ordered.map((key,index)=>{
-              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
+              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);const qualified=chosen.roundQualifiers.includes(key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} doubleRound={isDouble} secondEnabled={!isDouble||qualified} qualifierControl={isDouble?qualifierBox(key,qualified,row.rider):null} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
               const row=chosen.entries.find(item=>`p:${item.position}`===key); if(!row)return null;
               const mark=chosen.marks.find(m=>m.position===row.position);
               const draft=drafts[row.position]||{faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''};
               const isCurrent=chosen.tracking?.current_position===row.position;
               const isAbsent=chosen.tracking?.no_shows?.includes(row.position);
+              const qualified=chosen.roundQualifiers.includes(`p:${chosen.versionId}:${row.position}`);
               return <tr key={key} data-live-key={key} className={'grid grid-cols-2 gap-x-2.5 gap-y-2.5 p-3 md:table-row md:p-0 transition-colors '+(isCurrent?'bg-rose-50 ':'bg-white ')+(dragging===key?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
                 <td className="col-span-2 block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-72 min-w-0"><div className="flex items-start gap-1">
                   {dragButton(key,row.rider,index)}
-                  <div className="min-w-0 flex-1"><span className="font-bold text-[#123E59] break-words">{row.rider}</span><span className="block text-neutral-600 break-words">{row.horse}{row.category?' · '+row.category:' · Sin categoría'}</span><span className="block mt-1 text-xs font-bold text-[#A61E4D]">{isCurrent?'En pista':isAbsent?'No se presentó':mark?'Resultado cargado':'Pendiente'}</span><div className="flex flex-wrap gap-3 mt-1"><button disabled={busy!==null||isCurrent||isAbsent} onClick={()=>void setTracking(row.position,'current')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">Marcar en pista</button>{!mark&&<button disabled={busy!==null} onClick={()=>void setTracking(row.position,isAbsent?'restore':'absent')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">{isAbsent?'Volver a pendiente':'No se presentó'}</button>}</div></div>
+                  <div className="min-w-0 flex-1"><span className="font-bold text-[#123E59] break-words">{row.rider}</span><span className="block text-neutral-600 break-words">{row.horse}{row.category?' · '+row.category:' · Sin categoría'}</span><span className="block mt-1 text-xs font-bold text-[#A61E4D]">{isCurrent?'En pista':isAbsent?'No se presentó':mark?'Resultado cargado':'Pendiente'}</span><div className="flex flex-wrap gap-3 mt-1"><button disabled={busy!==null||isCurrent||isAbsent} onClick={()=>void setTracking(row.position,'current')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">Marcar en pista</button>{!mark&&<button disabled={busy!==null} onClick={()=>void setTracking(row.position,isAbsent?'restore':'absent')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">{isAbsent?'Volver a pendiente':'No se presentó'}</button>}</div>{isDouble&&qualifierBox(key,qualified,row.rider)}</div>
                 </div></td>
-                <td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-24 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{twoPhases?'Fase 1 · Faltas':'Faltas'}</span><input aria-label={`Faltas ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="numeric" value={draft.faults} onChange={e=>change(row.position,'faults',e.target.value,mark)}/></td>
-                <td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-28 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{twoPhases?'Fase 1 · Tiempo (seg.)':'Tiempo (seg.)'}</span><input aria-label={`Tiempo ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="decimal" value={draft.seconds} onChange={e=>change(row.position,'seconds',e.target.value,mark)}/></td>
-                {twoPhases&&<><td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-24 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">Fase 2 · Faltas</span><input aria-label={`Faltas fase 2 de ${row.rider}`} className={input} inputMode="numeric" value={draft.secondFaults} onChange={e=>change(row.position,'secondFaults',e.target.value,mark)}/></td><td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-28 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">Fase 2 · Tiempo (seg.)</span><input aria-label={`Tiempo fase 2 de ${row.rider}`} className={input} inputMode="decimal" value={draft.secondSeconds} onChange={e=>change(row.position,'secondSeconds',e.target.value,mark)}/></td></>}
+                <td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-24 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{isDouble?'Recorrido 1 · Faltas':twoPhases?'Fase 1 · Faltas':'Faltas'}</span><input aria-label={`Faltas ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="numeric" value={draft.faults} onChange={e=>change(row.position,'faults',e.target.value,mark)}/></td>
+                <td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-28 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{isDouble?'Recorrido 1 · Tiempo (seg.)':twoPhases?'Fase 1 · Tiempo (seg.)':'Tiempo (seg.)'}</span><input aria-label={`Tiempo ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="decimal" value={draft.seconds} onChange={e=>change(row.position,'seconds',e.target.value,mark)}/></td>
+                {twoPhases&&( !isDouble||qualified ? <><td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-24 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{isDouble?'Recorrido 2 · Faltas':'Fase 2 · Faltas'}</span><input aria-label={`Faltas fase 2 de ${row.rider}`} className={input} inputMode="numeric" value={draft.secondFaults} onChange={e=>change(row.position,'secondFaults',e.target.value,mark)}/></td><td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-28 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{isDouble?'Recorrido 2 · Tiempo (seg.)':'Fase 2 · Tiempo (seg.)'}</span><input aria-label={`Tiempo fase 2 de ${row.rider}`} className={input} inputMode="decimal" value={draft.secondSeconds} onChange={e=>change(row.position,'secondSeconds',e.target.value,mark)}/></td></> : <><td className="hidden md:table-cell md:border-t md:border-neutral-200"/><td className="hidden md:table-cell md:border-t md:border-neutral-200"/></>)}
                 <td className="col-span-2 block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200"><button disabled={busy!==null||isAbsent} onClick={()=>void save(row,mark)} className="w-full md:w-auto bg-[#123E59] text-white px-4 h-10 rounded-lg text-sm font-bold disabled:opacity-50">{busy===row.position?'Guardando…':mark?'Corregir':'Guardar'}</button></td>
               </tr>;
             })}</tbody>

@@ -82,6 +82,7 @@ export interface CompetitionClass {
   number: string;
   name: string;
   description: string;
+  liveFormat?: 'double_round' | null;
   order: number;
   isApproximate?: boolean;
   isContinuous?: boolean;

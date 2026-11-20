@@ -33,9 +33,19 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'combined_reorder' || body.action === 'manual_save' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
+  if (body.action === 'combined_reorder' || body.action === 'manual_save' || body.action === 'manual_result_save' || body.action === 'manual_tracking' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
+    if(body.action==='manual_result_save') {
+      if(typeof body.classId!=='string'||typeof body.startVersionId!=='string'||typeof body.manualId!=='string'||!Number.isInteger(body.faults)||typeof body.seconds!=='number'||!Number.isFinite(body.seconds))return reply({error:'Datos inválidos.'},400);
+      const {error}=await service.rpc('equidate_save_manual_combined',{actor:auth.user.id,target_event:body.eventId,target_class:body.classId,start_version:body.startVersionId||null,target_manual:body.manualId,faults:body.faults,seconds:body.seconds,second_faults:body.secondFaults??null,second_seconds:body.secondSeconds??null});
+      return error?reply({error:'No se pudo guardar la marca.'},403):reply({success:true});
+    }
+    if (body.action === 'manual_tracking') {
+      if(typeof body.classId!=='string' || typeof body.manualId!=='string' || !['current','absent','restore'].includes(body.operation))return reply({error:'Datos inválidos.'},400);
+      const {error}=await service.rpc('equidate_manual_tracking_action',{actor:auth.user.id,target_event:body.eventId,target_class:body.classId,target_manual:body.manualId,action:body.operation});
+      return error ? reply({error:'No se pudo actualizar el estado.'},403) : reply({success:true});
+    }
     if (body.action === 'live_start') {
       if (typeof body.classId !== 'string') return reply({error:'Prueba inválida.'},400);
       const {error} = await service.rpc('equidate_start_live_results', {actor:auth.user.id,target_event:body.eventId,target_class:body.classId});
@@ -60,13 +70,13 @@ Deno.serve(async (req: Request) => {
     }
     if (body.action === 'live_tracking') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !['current','absent','restore'].includes(body.operation)) return reply({ error: 'Datos inválidos.' }, 400);
-      const { error } = await service.rpc('equidate_live_tracking_action', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, action: body.operation });
+      const { error } = await service.rpc('equidate_published_tracking_action', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, action: body.operation });
       if (error) return reply({ error: 'No se pudo actualizar el estado.' }, 403);
       return reply({ success: true });
     }
     if (body.action === 'live_save') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Number.isInteger(body.position) || !Number.isInteger(body.faults) || typeof body.seconds !== 'number' || !Number.isFinite(body.seconds)) return reply({ error: 'Datos inválidos.' }, 400);
-      const { error } = await service.rpc('equidate_save_live_result_and_advance', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds, second_faults: body.secondFaults ?? null, second_seconds: body.secondSeconds ?? null });
+      const { error } = await service.rpc('equidate_save_published_combined', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, target_position: body.position, faults: body.faults, seconds: body.seconds, second_faults: body.secondFaults ?? null, second_seconds: body.secondSeconds ?? null });
       if (error) return reply({ error: 'No se pudo guardar. Comprobá tu acceso y que el listado no haya cambiado.' }, 403);
       return reply({ success: true });
     }
@@ -94,19 +104,20 @@ Deno.serve(async (req: Request) => {
     const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
     const manual = await service.from('manual_live_entries').select('*').in('class_id',ids).order('created_at');
     if (manual.error) return reply({error:'No se pudieron leer los binomios.'},500);
-    const [versions, marks, tracking, combined, starts, manualOrder] = await Promise.all([
+    const [versions, marks, tracking, combined, starts, manualOrder, manualTracking] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows,live_order').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_combined_order').select('class_id,start_version_id,entries,revision').in('class_id',ids).in('start_version_id',versionIds),
       service.from('live_result_starts').select('class_id').in('class_id',ids),
       service.from('live_manual_only_order').select('class_id,entries,revision').in('class_id',ids),
+      service.from('manual_live_tracking').select('class_id,current_manual_id,no_shows').in('class_id',ids),
     ]);
-    if (versions.error || marks.error || tracking.error || combined.error || starts.error || manualOrder.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
+    if (versions.error || marks.error || tracking.error || combined.error || starts.error || manualOrder.error || manualTracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
       const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
       const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return [{ ...c, started: (starts.data || []).some((s: {class_id:string})=>s.class_id===c.id), combined: version ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === version.id) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
+      return [{ ...c, manualTracking:(manualTracking.data||[]).find((t:{class_id:string})=>t.class_id===c.id)||null, started: (starts.data || []).some((s: {class_id:string})=>s.class_id===c.id), combined: version ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === version.id) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

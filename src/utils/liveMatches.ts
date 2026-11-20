@@ -29,7 +29,7 @@ export function matchLiveEntries(manual: Entry[], published: Entry[]) {
   });
 }
 
-export type ManualEntry = {id:string;rider:string;horse:string;category:string;position:number|null;obstacle_faults:number|null;time_seconds:number|null;phase2_faults:number|null;phase2_seconds:number|null};
+export type ManualEntry = {entry_label?:string|null;id:string;rider:string;horse:string;category:string;position:number|null;obstacle_faults:number|null;time_seconds:number|null;phase2_faults:number|null;phase2_seconds:number|null};
 export function resolveManual(manual:ManualEntry[], entries:Entry[]) {
   const matches=matchLiveEntries(manual,entries);
   return manual.map((row,i)=>({...row,target:matches[i].match===null?null:entries[matches[i].match!].position,suggestions:matches[i].suggestions}));

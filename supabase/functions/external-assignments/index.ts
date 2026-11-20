@@ -33,9 +33,21 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'manual_save' || body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
+  if (body.action === 'combined_reorder' || body.action === 'manual_save' || body.action === 'live_list' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
+    if (body.action === 'combined_reorder') {
+      if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' ||
+          !Number.isSafeInteger(body.revision) || !Array.isArray(body.order) ||
+          !body.order.every((key: unknown) => typeof key === 'string'))
+        return reply({error:'Datos inválidos.'},400);
+      const {data, error} = await service.rpc('equidate_set_combined_live_order', {
+        actor: auth.user.id, target_event: body.eventId, target_class: body.classId,
+        start_version: body.startVersionId, expected_revision: body.revision, new_entries: body.order,
+      });
+      if (error) return reply({error:'El orden cambió o tu acceso venció. Actualizá e intentá nuevamente.'},409);
+      return reply({success:true, revision:data});
+    }
     if (body.action === 'live_reorder') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' || !Array.isArray(body.expectedOrder) || !Array.isArray(body.newOrder) || !body.expectedOrder.every(Number.isInteger) || !body.newOrder.every(Number.isInteger)) return reply({ error: 'Datos inválidos.' }, 400);
       const { error } = await service.rpc('equidate_reorder_live', { actor: auth.user.id, target_event: body.eventId, target_class: body.classId, start_version: body.startVersionId, expected_order: body.expectedOrder, new_order: body.newOrder });
@@ -61,8 +73,10 @@ Deno.serve(async (req: Request) => {
       if (!allowed) return reply({error:'Prueba no autorizada.'},403);
       const row = body.row;
       if (!row || typeof row.rider !== 'string' || typeof row.horse !== 'string') return reply({error:'Binomio inválido.'},400);
-      const values = {rider:row.rider.trim(),horse:row.horse.trim(),category:row.category || '',position:row.position,
-        obstacle_faults:row.obstacle_faults,time_seconds:row.time_seconds,phase2_faults:row.phase2_faults,phase2_seconds:row.phase2_seconds};
+      const values: Record<string, unknown> = {rider:row.rider.trim(),horse:row.horse.trim(),category:row.category || ''};
+      for (const field of ['position','entry_label','obstacle_faults','time_seconds','phase2_faults','phase2_seconds']) {
+        if (Object.prototype.hasOwnProperty.call(row, field)) values[field] = row[field];
+      }
       const result = body.edit ? await service.from('manual_live_entries').update(values).eq('class_id',allowed.id).eq('id',row.id).select('id').single()
         : await service.from('manual_live_entries').insert({...values,id:row.id,class_id:allowed.id});
       return result.error ? reply({error:'Revisá los datos del binomio.'},400) : reply({success:true});
@@ -76,16 +90,17 @@ Deno.serve(async (req: Request) => {
     const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
     const manual = await service.from('manual_live_entries').select('*').in('class_id',ids).order('created_at');
     if (manual.error) return reply({error:'No se pudieron leer los binomios.'},500);
-    const [versions, marks, tracking] = await Promise.all([
+    const [versions, marks, tracking, combined] = await Promise.all([
       service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows,live_order').in('class_id', ids).in('start_version_id', versionIds),
+      service.from('live_combined_order').select('class_id,start_version_id,entries,revision').in('class_id',ids).in('start_version_id',versionIds),
     ]);
-    if (versions.error || marks.error || tracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
+    if (versions.error || marks.error || tracking.error || combined.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
       const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
       const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return [{ ...c, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
+      return [{ ...c, combined: (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === version?.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

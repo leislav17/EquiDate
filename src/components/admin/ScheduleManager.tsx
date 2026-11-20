@@ -506,6 +506,7 @@ export function ClassForm({
   const [commonContinuous, setCommonContinuous] = useState(entry?.isContinuous ?? false);
   const [name, setName] = useState(entry?.name || '');
   const [description, setDescription] = useState(entry?.description || '');
+  const [liveFormat,setLiveFormat]=useState<'double_round'|''>(entry?.liveFormat==='double_round'?'double_round':'');
   const [participantCount, setParticipantCount] = useState<string>(() => {
     if (entry && typeof entry.participantCount === 'number') {
       return String(entry.participantCount);
@@ -590,6 +591,7 @@ export function ClassForm({
         name,
         time: commonContinuous ? (commonTime || '') : commonTime,
         description,
+        liveFormat:liveFormat || null,
         order,
         isApproximate: commonContinuous ? false : commonApproximate,
         isContinuous: commonContinuous,
@@ -614,6 +616,7 @@ export function ClassForm({
         name,
         time: effContinuous ? (effTime || '') : effTime,
         description,
+        liveFormat:liveFormat || null,
         order,
         isApproximate: effApproximate,
         isContinuous: effContinuous,
@@ -657,6 +660,12 @@ export function ClassForm({
       </div>
 
       <fieldset disabled={busy} className="space-y-3">
+        <label className="block text-xs font-semibold text-neutral-700">Tipo de prueba para resultados en vivo
+          <select className={field} value={liveFormat} onChange={e=>setLiveFormat(e.target.value as 'double_round'|'')}>
+            <option value="">Automático según descripción</option>
+            <option value="double_round">Doble recorrido</option>
+          </select>
+        </label>
         {/* Date selection */}
         {isEditingExisting ? (
           <div>

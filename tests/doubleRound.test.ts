@@ -1,0 +1,40 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+
+test('double round selection is per participant, authorized, persistent and never deletes marks',async()=>{
+  const db=new PGlite();
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
+    create table auth.users(id uuid primary key,raw_app_meta_data jsonb,banned_until timestamptz);
+    create table events(id uuid primary key,end_date date,status text,discipline text);
+    create table external_event_assignments(user_id uuid,event_id uuid,primary key(user_id,event_id));
+    create table competition_classes(id uuid primary key,event_id uuid);
+    create table start_list_versions(id uuid primary key,class_id uuid,entries jsonb,unique(class_id,id));
+    create table start_lists(class_id uuid primary key,version_id uuid);
+    grant select on events,competition_classes,start_lists,start_list_versions to anon,authenticated;`);
+  for(const name of ['20261118151405_provisional_live_results.sql','20261119104700_live_results_two_phases.sql','20261119105343_live_tracking.sql','20261119230837_live_reorder.sql','20261120010000_manual_live_entries.sql','20261120020000_live_manual_order.sql','20261120130308_combined_live_tracking_order.sql','20261120163022_manual_live_tracking.sql','20261120124332_live_result_starts.sql','20261120170632_live_results_visibility.sql','20261120214451_double_round_qualification.sql'])await db.exec(readFileSync('supabase/migrations/'+name,'utf8'));
+  const u='00000000-0000-0000-0000-000000000001',e='00000000-0000-0000-0000-000000000002',c='00000000-0000-0000-0000-000000000003',v='00000000-0000-0000-0000-000000000004',m='00000000-0000-0000-0000-000000000005',c2='00000000-0000-0000-0000-000000000006';
+  await db.query("insert into auth.users values($1,'{\"equidate_external\":true}',null)",[u]);
+  await db.query("insert into events values($1,current_date,'published','jumping')",[e]);
+  await db.query('insert into competition_classes(id,event_id,live_format) values($1,$3,$4),($2,$3,null)',[c,c2,e,'double_round']);
+  await db.query('insert into external_event_assignments values($1,$2)',[u,e]);
+  await db.query("insert into start_list_versions values($1,$2,'[{\"position\":1,\"category\":\"A\"},{\"position\":2,\"category\":\"A\"}]')",[v,c]);
+  await db.query('insert into start_lists values($1,$2)',[c,v]);
+  await db.query('insert into live_result_starts(class_id) values($1)',[c]);
+  await db.query('insert into provisional_live_results(class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds) values($1,$2,1,0,42,4,39)',[c,v]);
+  await db.query("insert into manual_live_entries(id,class_id,rider,horse,category) values($1,$2,'A','B','C')",[m,c]);
+  const select=(position:number|null,manual:string|null,yes:boolean,cls=c,ver:string|null=v)=>db.query('select equidate_set_second_round_qualification($1,$2,$3,$4,$5,$6,$7)',[u,e,cls,ver,position,manual,yes]);
+  await select(1,null,true);await select(null,m,true);await select(1,null,true);
+  assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,2);
+  await assert.rejects(select(3,null,true)); await assert.rejects(select(1,null,true,c2)); await assert.rejects(select(1,null,true,c,m));
+  await db.exec('set role anon'); assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,2);await assert.rejects(select(1,null,false));await db.exec('reset role');
+  await select(1,null,false);
+  assert.deepEqual((await db.query<{phase2_faults:number;phase2_seconds:string}>('select phase2_faults,phase2_seconds from provisional_live_results')).rows[0],{phase2_faults:4,phase2_seconds:'39.00'});
+  await select(1,null,true);
+  await db.query('update live_result_starts set public_visible=false where class_id=$1',[c]);
+  await db.exec('set role anon');assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,0);await db.exec('reset role');
+  await db.query('delete from external_event_assignments where user_id=$1',[u]);await assert.rejects(select(1,null,false));
+  await db.close();
+});
+

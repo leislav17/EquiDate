@@ -106,7 +106,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
   };
 
   if (totalClassesCount === 0) {
-    return <p className="text-sm text-neutral-500 py-3">Pruebas a�n no publicadas.</p>;
+    return <p className="text-sm text-neutral-500 py-3">Pruebas aún no publicadas.</p>;
   }
 
   const showArenaHeaders = !arenaId && (activeArenas.length > 1 || arenas.filter(a => a.eventId === eventId).length > 1 || activeArenas.length === 1);
@@ -157,4 +157,3 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
     </div>
   );
 }
-

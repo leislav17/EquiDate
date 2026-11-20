@@ -20,7 +20,7 @@ export function ManualLiveRow({ row, eventId, classId, twoPhases, onSaved, dragH
     const hasSecond = twoPhases && (secondFaults.trim() !== '' || secondTime !== '');
     if (!validFaults(faults) || !validTime(time) ||
         (hasSecond && (!validFaults(secondFaults) || !validTime(secondTime)))) {
-      setError('Complet� faltas enteras y tiempos v�lidos con hasta dos decimales.');
+      setError('Completá faltas enteras y tiempos válidos con hasta dos decimales.');
       return;
     }
     setBusy(true); setError('');
@@ -32,20 +32,19 @@ export function ManualLiveRow({ row, eventId, classId, twoPhases, onSaved, dragH
       } },
     });
     setBusy(false);
-    if (saveError || !data?.success) setError('No se pudo guardar la marca. Revis� tu acceso e intent� nuevamente.');
+    if (saveError || !data?.success) setError('No se pudo guardar la marca. Revisá tu acceso e intentá nuevamente.');
     else onSaved();
   };
   return <tr data-live-key={`m:${row.id}`} className={'bg-white '+(dragging?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
     <td className="p-2 border-t border-neutral-200 min-w-72">
       {dragHandle}<span className="font-bold text-[#123E59]">{row.rider}</span>
       
-      <span className="block text-neutral-600">{row.horse} � {row.category || 'Sin categor�a'}</span>
+      <span className="block text-neutral-600">{row.horse} · {row.category || 'Sin categoría'}</span>
       <span className="block text-xs font-bold text-[#A61E4D]">{row.time_seconds == null ? 'Pendiente' : 'Resultado cargado'}</span>
     </td>
     <td className="p-2 border-t"><input aria-label={`Faltas de ${row.rider}`} className={input} inputMode="numeric" value={faults} onChange={e=>setFaults(e.target.value)} /></td>
     <td className="p-2 border-t"><input aria-label={`Tiempo de ${row.rider}`} className={input} inputMode="decimal" value={seconds} onChange={e=>setSeconds(e.target.value)} /></td>
     {twoPhases && <><td className="p-2 border-t"><input aria-label={`Faltas fase 2 de ${row.rider}`} className={input} inputMode="numeric" value={secondFaults} onChange={e=>setSecondFaults(e.target.value)} /></td><td className="p-2 border-t"><input aria-label={`Tiempo fase 2 de ${row.rider}`} className={input} inputMode="decimal" value={secondSeconds} onChange={e=>setSecondSeconds(e.target.value)} /></td></>}
-    <td className="p-2 border-t"><button disabled={busy} onClick={()=>void save()} className="bg-[#123E59] text-white px-4 h-10 rounded-lg font-bold disabled:opacity-50">{busy ? 'Guardando.' : row.time_seconds == null ? 'Guardar' : 'Corregir'}</button>{error && <p role="alert" className="text-red-700 text-xs mt-1">{error}</p>}</td>
+    <td className="p-2 border-t"><button disabled={busy} onClick={()=>void save()} className="bg-[#123E59] text-white px-4 h-10 rounded-lg font-bold disabled:opacity-50">{busy ? 'Guardando…' : row.time_seconds == null ? 'Guardar' : 'Corregir'}</button>{error && <p role="alert" className="text-red-700 text-xs mt-1">{error}</p>}</td>
   </tr>;
 }
-

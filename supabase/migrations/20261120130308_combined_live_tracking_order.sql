@@ -5,7 +5,7 @@ create or replace function public.equidate_set_combined_live_order(
 declare actual_revision bigint; valid_entries text[]; result_revision bigint;
 begin
   if actor is null or new_entries is null or array_position(new_entries, null) is not null
-    then raise exception 'Datos inv�lidos'; end if;
+    then raise exception 'Datos inválidos'; end if;
   perform 1 from auth.users u where u.id=actor
     and u.raw_app_meta_data->>'equidate_external'='true'
     and (u.banned_until is null or u.banned_until<=clock_timestamp()) for share;
@@ -18,7 +18,7 @@ begin
       and h.version_id=start_version and coalesce(e.discipline,'jumping')='jumping'
       and (clock_timestamp() at time zone 'America/Argentina/Buenos_Aires')::date <= e.end_date+1
     for share of a,e,c,h;
-  if not found then raise exception 'Acceso o listado inv�lido' using errcode='42501'; end if;
+  if not found then raise exception 'Acceso o listado inválido' using errcode='42501'; end if;
   select array_agg(k order by k) into valid_entries from (
     select 'p:' || (item->>'position') as k
       from public.start_list_versions v cross join lateral jsonb_array_elements(v.entries) item
@@ -28,13 +28,13 @@ begin
   ) entries;
   if coalesce(cardinality(valid_entries),0) <> cardinality(new_entries)
      or (select array_agg(x order by x) from unnest(new_entries) x)
-       is distinct from valid_entries then raise exception 'Orden inv�lido'; end if;
+       is distinct from valid_entries then raise exception 'Orden inválido'; end if;
   insert into public.live_combined_order(class_id,start_version_id)
     values(target_class,start_version) on conflict do nothing;
   select revision into actual_revision from public.live_combined_order
     where class_id=target_class and start_version_id=start_version for update;
   if actual_revision <> expected_revision then
-    raise exception 'El orden cambi�; actualiz�' using errcode='40001';
+    raise exception 'El orden cambió; actualizá' using errcode='40001';
   end if;
   update public.live_combined_order set entries=new_entries, revision=revision+1
     where class_id=target_class and start_version_id=start_version returning revision into result_revision;
@@ -62,22 +62,21 @@ create function public.equidate_set_manual_only_order(actor uuid, target_event u
 returns bigint language plpgsql security definer set search_path='' as $$
 declare actual_revision bigint; valid_entries text[]; result_revision bigint;
 begin
-  if actor is null or target_event is null or target_class is null or expected_revision is null or new_entries is null or array_position(new_entries,null) is not null then raise exception 'Datos inv�lidos'; end if;
+  if actor is null or target_event is null or target_class is null or expected_revision is null or new_entries is null or array_position(new_entries,null) is not null then raise exception 'Datos inválidos'; end if;
   perform 1 from auth.users u where u.id=actor and u.raw_app_meta_data->>'equidate_external'='true' and (u.banned_until is null or u.banned_until<=clock_timestamp()) for share;
   if not found then raise exception 'Cuenta no autorizada' using errcode='42501'; end if;
   perform 1 from public.external_event_assignments a join public.events e on e.id=a.event_id join public.competition_classes c on c.event_id=e.id
     where a.user_id=actor and e.id=target_event and c.id=target_class and coalesce(e.discipline,'jumping')='jumping'
     and (clock_timestamp() at time zone 'America/Argentina/Buenos_Aires')::date<=e.end_date+1 for share of a,e,c;
   if not found then raise exception 'Concurso no autorizado' using errcode='42501'; end if;
-  if exists(select 1 from public.start_lists h where h.class_id=target_class and h.version_id is not null) then raise exception 'El listado cambi�' using errcode='40001'; end if;
+  if exists(select 1 from public.start_lists h where h.class_id=target_class and h.version_id is not null) then raise exception 'El listado cambió' using errcode='40001'; end if;
   select array_agg('m:'||m.id::text order by 'm:'||m.id::text) into valid_entries from public.manual_live_entries m where m.class_id=target_class;
-  if coalesce(cardinality(valid_entries),0)<>cardinality(new_entries) or (select array_agg(x order by x) from unnest(new_entries) x) is distinct from valid_entries then raise exception 'Orden inv�lido'; end if;
+  if coalesce(cardinality(valid_entries),0)<>cardinality(new_entries) or (select array_agg(x order by x) from unnest(new_entries) x) is distinct from valid_entries then raise exception 'Orden inválido'; end if;
   insert into public.live_manual_only_order(class_id) values(target_class) on conflict do nothing;
   select revision into actual_revision from public.live_manual_only_order where class_id=target_class for update;
-  if actual_revision<>expected_revision then raise exception 'El orden cambi�' using errcode='40001'; end if;
+  if actual_revision<>expected_revision then raise exception 'El orden cambió' using errcode='40001'; end if;
   update public.live_manual_only_order set entries=new_entries,revision=revision+1 where class_id=target_class returning revision into result_revision;
   return result_revision;
 end $$;
 revoke all on function public.equidate_set_manual_only_order(uuid,uuid,uuid,bigint,text[]) from public,anon,authenticated;
 grant execute on function public.equidate_set_manual_only_order(uuid,uuid,uuid,bigint,text[]) to service_role;
-

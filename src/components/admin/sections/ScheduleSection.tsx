@@ -230,9 +230,9 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
                   key={dayDate}
                   className="bg-white border border-neutral-200/90 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4"
                 >
-                  <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
-                    <h3 className="font-display text-sm sm:text-base font-black text-[#123E59] flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-[#123E59]" />
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-neutral-200">
+                    <h3 className="font-display text-sm sm:text-base font-black text-[#123E59] flex flex-wrap items-center gap-2 min-w-0">
+                      <Calendar className="w-4 h-4 text-[#123E59] shrink-0" />
                       <span>{formatDayHeader(dayDate).fullFormatted}</span>
                       <span className="text-xs font-semibold text-neutral-500">
                         · {dayClasses.length} {dayClasses.length === 1 ? 'prueba' : 'pruebas'}
@@ -253,8 +253,8 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
                         key={arena.id}
                         className="space-y-2.5 bg-neutral-50/80 p-3 sm:p-4 rounded-xl border border-neutral-200"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 min-w-0">
                             <span className="w-2.5 h-2.5 rounded-full bg-[#123E59]" />
                             <span className="font-display font-black text-xs uppercase text-[#123E59] tracking-wider">
                               {arena.name}
@@ -332,7 +332,7 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
                                   setDraggedClassId(null);
                                   setDragOverClassId(null);
                                 }}
-                                className={`border rounded-xl p-3 flex items-start justify-between gap-3 bg-white transition-all ${
+                                className={`border rounded-xl p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 bg-white transition-all ${
                                   isDragging
                                     ? 'opacity-40 border-dashed border-[#123E59]'
                                     : isDragOver
@@ -340,7 +340,7 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
                                     : 'border-neutral-200 hover:border-neutral-300'
                                 }`}
                               >
-                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-1">
                                   <div className="flex items-center gap-1 shrink-0 pt-0.5">
                                     <span
                                       className="cursor-grab active:cursor-grabbing text-neutral-400 hover:text-neutral-700 p-0.5"
@@ -409,7 +409,7 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ event }) => {
                                   </div>
                                 </div>
 
-                                <div className="flex shrink-0 items-center gap-1">
+                                <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
                                   <button
                                     type="button"
                                     title="Duplicar prueba"

@@ -91,13 +91,13 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans selection:bg-neutral-900 selection:text-white pb-12">
+    <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans selection:bg-neutral-900 selection:text-white pb-12 overflow-x-clip">
       {/* Top Navigation Bar */}
       <Header discipline={activeView === 'public' && !selectedEventId && !hash && !routeNotFound ? discipline : undefined} />
 
       {/* Main Content Router */}
-      <main className="flex-1 w-full">
-        {(dataError || refreshError) && <div role="alert" className="max-w-4xl mx-auto m-4 p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError || refreshError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div>}
+      <main className="flex-1 w-full min-w-0">
+        {(dataError || refreshError) && <div className="equidate-container pt-4"><div role="alert" className="p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError || refreshError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div></div>}
         {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : liveResultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p> : dataError ? null : <LiveResultsView key={liveResultsId} classId={liveResultsId} />
         ) : resultsId ? (
@@ -126,7 +126,7 @@ const AppContent: React.FC = () => {
         ) : dataError ? null : selectedEventId ? (
           <CompetitionDetail key={selectedEventId} />
         ) : routeNotFound ? (
-          <section className="max-w-4xl mx-auto px-4 py-12 text-center">
+          <section className="equidate-container py-12 text-center">
             <h1 className="text-xl font-bold text-[#123E59]">Concurso no encontrado</h1>
             <p className="my-4 text-neutral-600">Este enlace no corresponde a un concurso disponible.</p>
             <button onClick={() => setSelectedEventId(null)} className="min-h-11 px-4 bg-[#123E59] text-white rounded-lg">Volver a Concursos</button>
@@ -138,7 +138,7 @@ const AppContent: React.FC = () => {
 
       {/* Discreet Minimal Footer */}
       <footer className="mt-auto py-6 border-t border-neutral-200/80 text-center text-xs text-neutral-400">
-        <div className="max-w-5xl mx-auto px-4 flex items-center justify-center">
+        <div className="equidate-container flex items-center justify-center">
           <p className="font-semibold text-neutral-600">
             EquiDate · Calendario de eventos hípicos
           </p>

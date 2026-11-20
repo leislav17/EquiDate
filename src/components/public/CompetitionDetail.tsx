@@ -84,7 +84,7 @@ export const CompetitionDetail: React.FC = () => {
 
   if (!event) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+      <div className="equidate-container py-12 text-center">
         <p className="text-neutral-500 mb-4">Concurso no encontrado.</p>
         <button
           type="button"
@@ -106,7 +106,7 @@ export const CompetitionDetail: React.FC = () => {
 
   return (
     <div className="w-full bg-[#f4f6f8] min-h-[calc(100vh-64px)] pb-12">
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="equidate-container py-5 sm:py-6">
         {/* Back Button */}
         <button
           type="button"
@@ -136,20 +136,20 @@ export const CompetitionDetail: React.FC = () => {
             )}
           </div>
 
-          <h1 className="font-display text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight leading-tight">
+          <h1 className="font-display text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight leading-tight break-words">
             {event.name}
           </h1>
 
           <div className="mt-3 flex flex-wrap items-center gap-y-2 gap-x-4 text-xs sm:text-sm text-neutral-600 font-medium">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
               <MapPin className="w-4 h-4 text-[#123E59] shrink-0" />
-              <span className="font-semibold text-neutral-800">{event.venue}</span>
-              {event.city && <span className="text-neutral-500">· {event.city}</span>}
+              <span className="font-semibold text-neutral-800 break-words">{event.venue}</span>
+              {event.city && <span className="text-neutral-500 break-words">· {event.city}</span>}
             </div>
-            <span aria-hidden="true" className="text-neutral-300">·</span>
-            <div className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="text-neutral-300 hidden sm:inline">·</span>
+            <div className="flex items-center gap-1.5 min-w-0">
               <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
-              <span>{dateRangeStr}</span>
+              <span className="break-words">{dateRangeStr}</span>
             </div>
           </div>
         </div>
@@ -308,7 +308,7 @@ export const CompetitionDetail: React.FC = () => {
                         HOY
                       </span>
                     )}
-                    <span className="font-display text-base sm:text-lg font-black tracking-tight text-[#123E59] leading-tight">
+                    <span className="font-display text-base sm:text-lg font-black tracking-tight text-[#123E59] leading-tight break-words">
                       {day.fullFormatted}
                     </span>
                   </div>
@@ -324,7 +324,7 @@ export const CompetitionDetail: React.FC = () => {
 
                 {/* Day Accordion Content */}
                 {isOpen && (
-                  <div className="p-4 sm:p-5 border-t border-neutral-100 bg-neutral-50/50 space-y-5">
+                  <div className="p-3.5 sm:p-5 border-t border-neutral-100 bg-neutral-50/50 space-y-5 min-w-0">
                     {competitionDays.filter(entry => entry.eventId === event.id && entry.date === day.dateStr).map(entry => <TransmissionButton key={entry.id} day={entry} />)}
                     <DayProgram eventId={event.id} date={day.dateStr} />
                   </div>

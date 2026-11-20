@@ -60,7 +60,7 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const arena = arenas.find(item => item.id === arenaId);
   const multiple = arenas.filter(item => item.eventId === day.eventId).length > 1;
   const selectedClass = classes.find(c => c.id === (selectedList?.kind === 'structured' || selectedList?.kind === 'live-results' ? selectedList.id : selectedDocument?.classId));
-  return <div className="max-w-4xl mx-auto lg:max-w-[1600px] lg:px-6 lg:pt-6 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6">
+  return <div className="w-full mx-auto lg:max-w-[85rem] lg:px-8 lg:pt-6 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6">
     {videoId ? <div ref={videoRef} className="sticky top-[65px] lg:top-[89px] z-30 bg-black lg:col-start-1 lg:row-start-1">
       <div className="aspect-video max-h-[50svh] w-full overflow-hidden">
         <iframe key={videoId} src={'https://www.youtube-nocookie.com/embed/' + videoId + '?playsinline=1'}
@@ -68,19 +68,19 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
           className="w-full h-full border-0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
       </div>
-    </div> : <p className="px-4 pt-6">Transmisión aún no disponible.</p>}
-    <div className="px-4 py-6 lg:col-start-1 lg:row-start-2 min-w-0">
+    </div> : <p className="px-4 sm:px-6 lg:px-0 pt-6">Transmisión aún no disponible.</p>}
+    <div className="px-4 sm:px-6 lg:px-0 py-6 lg:col-start-1 lg:row-start-2 min-w-0">
     <button onClick={() => { setSelectedEventId(day.eventId); setActiveView('public'); }}
       className="flex items-center gap-2 min-h-11 text-sm font-bold text-[#123E59] mb-4">
       <ArrowLeft className="w-4 h-4" />Volver al concurso
     </button>
     <p className="text-xs font-bold text-[#A61E4D]">{formatDayHeader(day.date).fullFormatted}</p>
-    <h1 className="font-display text-2xl font-black text-[#123E59] mt-1 mb-4">{event?.name}</h1>
-    {selectedClass && <div className="hidden lg:block mb-4"><p className="text-xs font-bold text-[#A61E4D]">Prueba {selectedClass.number}</p><h2 className="font-display text-xl font-bold text-[#123E59]">{selectedClass.name}</h2><p className="text-sm text-neutral-700 mt-1">{selectedClass.description}</p><p className="text-sm text-neutral-500">{arenas.find(a => a.id === selectedClass.arenaId)?.name}</p></div>}
+    <h1 className="font-display text-2xl font-black text-[#123E59] mt-1 mb-4 break-words">{event?.name}</h1>
+    {selectedClass && <div className="hidden lg:block mb-4"><p className="text-xs font-bold text-[#A61E4D]">Prueba {selectedClass.number}</p><h2 className="font-display text-xl font-bold text-[#123E59] break-words">{selectedClass.name}</h2><p className="text-sm text-neutral-700 mt-1 break-words">{selectedClass.description}</p><p className="text-sm text-neutral-500">{arenas.find(a => a.id === selectedClass.arenaId)?.name}</p></div>}
     <p className="text-xs font-bold mb-3">{label === 'VER EN VIVO' ? 'EN VIVO · Transmisión de la jornada' : 'Transmisión de la jornada'}</p>
-    {multiple && <h2 className="font-bold text-[#123E59] mb-4">{arena?.name}</h2>}
+    {multiple && <h2 className="font-bold text-[#123E59] mb-4 break-words">{arena?.name}</h2>}
     </div>
-    <div ref={listsRef} className="px-4 pb-6 min-w-0 scroll-mt-20 lg:px-0 lg:sticky lg:top-[89px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-113px)] lg:overflow-y-auto">
+    <div ref={listsRef} className="px-4 sm:px-6 pb-6 min-w-0 scroll-mt-20 lg:px-0 lg:sticky lg:top-[89px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-113px)] lg:overflow-y-auto">
       {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded desktopMetadataBelowVideo onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'live-results' ? <LiveResultsView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
@@ -103,8 +103,8 @@ export function TransmissionPage({ dayId: route }: { dayId: string }) {
   const day = days.find(entry => entry.id === dayId);
   const arena = arenas.find(item => item.eventId === day?.eventId && (requestedArena ? item.id === requestedArena : item.isPrimary));
   const stream = streams.find(item => item.dayId === dayId && item.arenaId === arena?.id);
-  if (isLoading) return <p role="status" className="p-6 text-center">Cargando transmisión…</p>;
-  if (!day || (requestedArena && !arena)) return <div className="p-6 text-center"><p>Jornada o pista no disponible.</p><a href="#" className="underline">Volver a concursos</a></div>;
+  if (isLoading) return <p role="status" className="equidate-container py-6 text-center">Cargando transmisión…</p>;
+  if (!day || (requestedArena && !arena)) return <div className="equidate-container py-6 text-center"><p>Jornada o pista no disponible.</p><a href="#" className="underline">Volver a concursos</a></div>;
   const youtubeUrl = arenaError && !requestedArena ? day.youtubeUrl : stream?.youtubeUrl || '';
   return <Player key={`${day.id}/${arena?.id || ''}`} day={day} arenaId={arena?.id} youtubeUrl={youtubeUrl} />;
 }

@@ -305,7 +305,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
 
   return (
     <div className="w-full bg-[#f4f6f8] min-h-[calc(100vh-64px)] pb-12">
-      <div className="max-w-5xl mx-auto px-4 py-5 sm:py-6">
+      <div className="equidate-container py-5 sm:py-6">
         {discipline !== 'jumping' && <h1 className="font-display text-2xl font-bold text-[#123E59] mb-4">{disciplineLabels[discipline]}</h1>}
         {/* ======================================================== */}
         {/* 1. HERO: EVENTOS ACTUALES DESTACADOS (Carrusel con bucle) */}
@@ -399,25 +399,25 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
                         </div>
 
                         {/* Center: Event Name */}
-                        <div className="my-2">
-                          <h2 className="font-display text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight group-hover:text-blue-100 transition-colors">
+                        <div className="my-2 min-w-0">
+                          <h2 className="font-display text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight group-hover:text-blue-100 transition-colors break-words">
                             {evt.name}
                           </h2>
                         </div>
 
                         {/* Bottom: Location, Date & CTA button */}
                         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pt-3 border-t border-white/15">
-                          <div className="space-y-1 text-xs sm:text-sm text-white/90">
-                            <div className="flex items-center gap-1.5">
+                          <div className="space-y-1 text-xs sm:text-sm text-white/90 min-w-0">
+                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
                               <MapPin className="w-4 h-4 text-[#93c5fd] shrink-0" />
-                              <span className="font-semibold">{evt.venue}</span>
+                              <span className="font-semibold break-words">{evt.venue}</span>
                               {evt.city && (
-                                <span className="text-white/70">· {evt.city}</span>
+                                <span className="text-white/70 break-words">· {evt.city}</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 text-white/80">
+                            <div className="flex items-center gap-1.5 text-white/80 min-w-0">
                               <Clock className="w-4 h-4 text-[#93c5fd] shrink-0" />
-                              <span>{formatCardDate(evt.startDate, evt.endDate)}</span>
+                              <span className="break-words">{formatCardDate(evt.startDate, evt.endDate)}</span>
                             </div>
                           </div>
 
@@ -508,13 +508,13 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
             onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
             className="w-full flex items-center justify-between text-left cursor-pointer select-none transition-colors group"
           >
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="w-4 h-4 text-[#123E59]" />
-              <span className="font-display text-xs sm:text-sm font-black tracking-wider text-[#123E59] uppercase">
+            <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+              <SlidersHorizontal className="w-4 h-4 text-[#123E59] shrink-0" />
+              <span className="font-display text-xs sm:text-sm font-black tracking-wider text-[#123E59] uppercase shrink-0">
                 FILTROS
               </span>
               {!isFiltersExpanded && (
-                <span className="text-xs text-neutral-500 font-semibold truncate ml-1">
+                <span className="text-xs text-neutral-500 font-semibold truncate min-w-0 ml-1">
                   {selectedMonth === -2
                     ? '· Próximos concursos'
                     : `· ${activeYear} ${selectedMonth >= 0 ? `· ${MONTHS_FULL[selectedMonth]}` : '· Todos los meses'}`}
@@ -522,7 +522,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
               )}
             </div>
 
-            <div className="flex items-center gap-1 text-xs font-bold text-[#123E59]">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#123E59] shrink-0">
               <span className="text-[11px] font-semibold text-neutral-500 hidden xs:inline">
                 {isFiltersExpanded ? 'Ocultar' : 'Mostrar'}
               </span>
@@ -787,7 +787,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
             </div>
 
             {/* Calendar Day Header */}
-            <div className="grid grid-cols-7 border-b border-neutral-200 bg-[#0e3247] text-[11px] font-extrabold text-white/90 text-center py-2 sm:py-2.5">
+            <div className="grid grid-cols-7 border-b border-neutral-200 bg-[#0e3247] text-[10px] sm:text-[11px] font-extrabold text-white/90 text-center py-2 sm:py-2.5">
               <span>LUN</span>
               <span>MAR</span>
               <span>MIÉ</span>
@@ -802,7 +802,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
               {Array.from({ length: calendarData.startingDayOfWeek }).map((_, i) => (
                 <div
                   key={`empty-${i}`}
-                  className="min-h-[75px] sm:min-h-[110px] bg-neutral-50/50 border-b border-r border-neutral-100 p-1"
+                  className="min-w-0 min-h-[75px] sm:min-h-[110px] bg-neutral-50/50 border-b border-r border-neutral-100 p-1"
                 />
               ))}
 
@@ -815,7 +815,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
                 return (
                   <div
                     key={dayItem.dateStr}
-                    className={`min-h-[75px] sm:min-h-[110px] border-b border-r border-neutral-100 p-1.5 sm:p-2 flex flex-col justify-between transition-colors ${
+                    className={`min-w-0 min-h-[75px] sm:min-h-[110px] border-b border-r border-neutral-100 p-1 sm:p-2 flex flex-col justify-between transition-colors ${
                       isWeekend ? 'bg-neutral-50/40' : 'bg-white'
                     } ${hasEvents ? 'bg-blue-50/30' : ''}`}
                   >
@@ -861,7 +861,7 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
                             } ${hasCustomImage ? 'bg-white' : 'bg-[#123E59]'}`}
                           >
                             <div
-                              className={`w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 flex items-center justify-center overflow-hidden rounded ${
+                              className={`w-6 h-6 sm:w-8 sm:h-8 md:w-9 md:h-9 flex items-center justify-center overflow-hidden rounded ${
                                 hasCustomImage ? 'bg-white' : 'bg-[#123E59] p-1'
                               }`}
                             >

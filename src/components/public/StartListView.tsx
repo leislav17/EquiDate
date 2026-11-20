@@ -40,8 +40,8 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
     return matches ? [{ ...row, rider }] : [];
   }) || [];
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Listado-${entry?.number || classId}.pdf`)}` : '';
-  return <section className={embedded ? '@container bg-white text-neutral-900 rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : '@container min-h-[calc(100vh-64px)] bg-[#f4f6f8] text-neutral-900 px-4 sm:px-8 py-6'} aria-label="Listado de la prueba">
-    <div className="max-w-5xl mx-auto">
+  return <section className={embedded ? '@container bg-white text-neutral-900 rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : 'min-h-[calc(100vh-64px)] bg-[#f4f6f8] text-neutral-900 py-5 sm:py-6'} aria-label="Listado de la prueba">
+    <div className={embedded ? '@container' : 'equidate-container @container'}>
       <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />{embedded ? 'Volver a las pruebas de la jornada' : 'Volver al concurso'}</button>
       <div className={embedded ? '' : 'mt-4 bg-white border border-neutral-200/80 rounded-2xl p-4 sm:p-6 shadow-xs'}>
       {startListsError ? <div role="alert" className="py-8">{startListsError}<button className="underline ml-2 min-h-11" onClick={() => void refreshData()}>Reintentar</button></div> : !entry || !list ? <p className="py-8">Este listado no está publicado.</p> : <>
@@ -52,7 +52,7 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
         </div>
         <h2 className="font-semibold mt-5">Orden de ingreso <span className="text-neutral-500 font-normal">· {list.entries.length} participantes</span></h2>
         <label className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 mt-5 mb-3"><Search size={18} className="text-neutral-400" /><input aria-label="Buscar jinete, caballo, categoría, club u horario" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jinete, caballo, categoría o club" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none" /></label>
-        <div className={`grid ${startGrid(showTime)} gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white`}><span className="flex items-center justify-start"><Bell size={18} className="text-white" aria-hidden="true" /><span className="sr-only">Orden de ingreso</span>{showTime && <span className="ml-1">Hora</span>}</span><span className="@min-[36rem]:hidden">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
+        <div className={`grid ${startGrid(showTime)} gap-3 rounded-lg bg-[#123E59] px-2 py-3 text-xs uppercase font-semibold text-white`}><span className="flex items-center justify-start"><Bell size={18} className="text-white shrink-0" aria-hidden="true" /><span className="sr-only">Orden de ingreso</span>{showTime && <span className="ml-1">Hora</span>}</span><span className="@min-[36rem]:hidden min-w-0 break-words">Jinete / Caballo / Categoría · Club</span><span className="hidden @min-[36rem]:block">Jinete</span><span className="hidden @min-[36rem]:block">Caballo</span><span className="hidden @min-[36rem]:block">Categoría</span><span className="hidden @min-[36rem]:block">Club</span></div>
         <StartListRows entries={rows} showTime={showTime} />
         {!list.entries.length && <p className="py-8 text-neutral-500">Listado publicado sin participantes.</p>}
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}

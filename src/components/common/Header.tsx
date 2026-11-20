@@ -34,14 +34,14 @@ export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline 
     window.scrollTo(0, 0);
   };
   return <header className={`sticky top-0 z-40 bg-[#123E59] text-white shadow-sm border-b ${discipline && discipline !== 'training' ? 'border-neutral-200/90' : 'border-[#0e3247]'}`}>
-    <div className="relative max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <button type="button" aria-label="Abrir menú" aria-expanded={open} aria-controls="main-menu" onClick={() => setOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10"><Menu size={24} /></button>
-      <button type="button" onClick={() => go('/')} title="EquiDate — Inicio" aria-label="EquiDate — Inicio" className={`${isExternal ? 'flex-1 min-w-0 justify-center sm:absolute sm:left-1/2 sm:-translate-x-1/2' : 'absolute left-1/2 -translate-x-1/2'} min-h-11 flex items-center gap-2 sm:gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-white/30 hover:opacity-90`}>
-        <svg viewBox="630 761 4075 3618" className={isExternal ? 'w-8 sm:w-14 h-12' : 'w-14 h-12'} aria-hidden="true">
+    <div className="relative equidate-container h-16 flex items-center justify-between">
+      <button type="button" aria-label="Abrir menú" aria-expanded={open} aria-controls="main-menu" onClick={() => setOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10 shrink-0"><Menu size={24} /></button>
+      <button type="button" onClick={() => go('/')} title="EquiDate — Inicio" aria-label="EquiDate — Inicio" className={`${isExternal ? 'flex-1 min-w-0 justify-center sm:absolute sm:left-1/2 sm:-translate-x-1/2' : 'absolute left-1/2 -translate-x-1/2'} min-h-11 flex items-center gap-1.5 sm:gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-white/30 hover:opacity-90`}>
+        <svg viewBox="630 761 4075 3618" className={isExternal ? 'w-8 sm:w-14 h-12 shrink-0' : 'w-11 sm:w-14 h-12 shrink-0'} aria-hidden="true">
           <image href="/equidate-symbol.png" width="5225" height="5225" />
         </svg>
         <span className="w-[2px] h-8 shrink-0 rounded-full bg-[#A61E4D]" aria-hidden="true" />
-        <svg viewBox="153 1806 4787 1596" className={isExternal ? 'w-20 sm:w-44 h-12' : 'w-36 sm:w-44 h-12'} aria-hidden="true">
+        <svg viewBox="153 1806 4787 1596" className={isExternal ? 'w-20 sm:w-44 h-12 shrink-0' : 'w-28 sm:w-44 h-12 shrink-0'} aria-hidden="true">
           <image href="/equidate-wordmark.png" width="5225" height="5225" />
         </svg>
       </button>
@@ -61,7 +61,7 @@ export const Header: React.FC<{ discipline?: EventDiscipline }> = ({ discipline 
     </div>
     {discipline && discipline !== 'training' && (
       <nav aria-label="Disciplinas" className="bg-white text-[#123E59] border-t border-neutral-200">
-        <div className="max-w-5xl mx-auto px-4 grid grid-cols-2">
+        <div className="equidate-container grid grid-cols-2">
           {(['jumping', 'dressage'] as const).map(section => (
             <a key={section} href={`/${section}`} aria-current={discipline === section ? 'page' : undefined}
               onClick={e => {

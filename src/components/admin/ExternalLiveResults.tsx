@@ -102,15 +102,15 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:key,target:key,startX:e.clientX,startY:e.clientY,moved:false};}}
     onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(key,target);}}}><GripVertical aria-hidden="true" size={20}/></button>;
   const twoPhases=!!chosen && hasTwoPhases(chosen.description);
-  return <section className="max-w-6xl mx-auto px-4 py-8 space-y-5">
+  return <section className="equidate-container py-6 sm:py-8 space-y-5">
     <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-[#123E59] min-h-11"><ArrowLeft size={18}/>Volver al concurso</button>
     <h1 className="text-2xl font-display font-black text-[#123E59]">Resultados en vivo</h1>
-    <p className="text-sm text-neutral-600">{eventName} · Las marcas se publican como provisorias.</p>
+    <p className="text-sm text-neutral-600 break-words">{eventName} · Las marcas se publican como provisorias.</p>
     {loading ? <p>Cargando pruebas…</p> : <>
-      <label className="block text-sm font-bold max-w-xl">Prueba<select className={input+' mt-1'} value={classId} onChange={e=>changeClass(e.target.value)}><option value="">Elegí una prueba</option>{classes.map(c=><option key={c.id} value={c.id}>{c.event_date.split('-').reverse().join('/')} · Prueba {c.number} — {c.name}</option>)}</select></label>
+      <label className="block text-sm font-bold max-w-xl">Prueba<select className={input+' mt-1 max-w-full'} value={classId} onChange={e=>changeClass(e.target.value)}><option value="">Elegí una prueba</option>{classes.map(c=><option key={c.id} value={c.id}>{c.event_date.split('-').reverse().join('/')} · Prueba {c.number} — {c.name}</option>)}</select></label>
       {!classes.length && <p className="text-sm text-neutral-600">No hay pruebas con orden de ingreso publicado.</p>}
       {chosen && !chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs"><button type="button" disabled={starting} onClick={()=>void startLive()} className="inline-flex items-center gap-2 bg-[#A61E4D] text-white px-4 min-h-11 rounded-lg font-bold disabled:opacity-50"><Play size={18}/>{starting?'Iniciando…':'Iniciar carga de resultados en vivo'}</button></div>}
-      {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs">
+      {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs min-w-0">
         <div className="flex justify-end mb-4"><button type="button" className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-[#A61E4D] text-white text-sm font-bold hover:bg-[#85163c]" onClick={()=>setEditing(editing==='new'?null:'new')}><Plus size={18} aria-hidden="true"/>Agregar binomio</button></div>
         {editing&&<ManualEntryForm key={editing==='new'?'new':editing.id} classId={chosen.id} eventId={eventId} twoPhases={twoPhases} row={editing==='new'?undefined:editing} done={()=>{setEditing(null);void load();}}/>}
         <h2 className="font-bold text-[#123E59]">Orden de ingreso</h2>

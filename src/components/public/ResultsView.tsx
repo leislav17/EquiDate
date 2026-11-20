@@ -55,7 +55,7 @@ function JumpingResultRows({ entries, columns: sourceColumns }: { entries: Resul
   };
   const header = (col: ResultColumn, rowSpan = 1) => <th key={col.key} scope="col" rowSpan={rowSpan} className="result-metric-heading" aria-label={col.label}><abbr title={col.label} className={`no-underline ${metric(col).label.length <= 7 ? 'whitespace-nowrap' : ''}`}>{metric(col).label}</abbr></th>;
   const style = { '--result-metrics-width': columns.length ? `calc(${columns.map(c => metric(c).width).join(' + ')})` : '0px' } as CSSProperties;
-  return <div className="results-table-shell" style={style}>
+  return <div className="results-table-shell w-full max-w-full min-w-0" style={style}>
     {scrollable && <p className="sm:hidden text-[11px] text-neutral-500 mb-2 text-right">Deslizá la tabla para ver todas las marcas →</p>}
     <div ref={scrollRef} className={`overflow-x-auto border border-neutral-200 ${awards.length ? 'rounded-t-xl' : 'rounded-xl'}`} role="region" aria-label="Resultados de la prueba: tabla desplazable" tabIndex={scrollable ? 0 : undefined}>
       <table className="results-table text-left">
@@ -101,7 +101,7 @@ export function ResultsView({ classId }: { classId: string }) {
   }) || [];
   const close = () => setSelectedEventId(entry?.eventId || null);
   const downloadUrl = pdf ? `${pdf.fileUrl}${pdf.fileUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(`Resultados-${entry?.number || classId}.pdf`)}` : '';
-  return <section aria-label="Resultados de la prueba" className="min-h-[calc(100vh-64px)] bg-white px-4 sm:px-8 py-5 sm:py-8"><div className="max-w-5xl mx-auto">
+  return <section aria-label="Resultados de la prueba" className="min-h-[calc(100vh-64px)] bg-white py-5 sm:py-6"><div className="equidate-container">
     <button onClick={close} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver al concurso</button>
     {resultsError ? <div role="alert" className="py-8">{resultsError}<button onClick={() => void refreshData()} className="ml-2 underline min-h-11">Reintentar</button></div> : !entry || !result ? <p className="py-8">Estos resultados no están publicados.</p> : <>
       <p className="text-sm text-neutral-500 mt-6 break-words">{events.find(e => e.id === entry.eventId)?.name} · {entry.date.split('-').reverse().join('/')} · {arenas.find(a => a.id === entry.arenaId)?.name}</p>

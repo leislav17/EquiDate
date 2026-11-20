@@ -52,10 +52,10 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
       key={doc.id}
       title={doc.name}
       onClick={() => doc.type === 'START_LIST' && onOpenListDocument ? onOpenListDocument(doc) : setViewingDocumentId(doc.id)}
-      className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left cursor-pointer"
+      className="inline-flex items-center gap-2 min-h-11 max-w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left cursor-pointer"
     >
       {doc.type === 'RESULT' ? <Award className="w-4 h-4 shrink-0" /> : <Bell className="w-4 h-4 shrink-0" />}
-      <span>{documentTypeLabel(doc.type)}</span>
+      <span className="break-words">{documentTypeLabel(doc.type)}</span>
     </button>
   );
 
@@ -77,9 +77,9 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
               <div className="text-[#123E59] text-sm font-bold shrink-0 pt-0.5">{scheduleLabel}</div>
             ) : null}
             <div className="min-w-0 flex-1">
-              <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D]">{identLabel}</p>
+              <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D] break-words">{identLabel}</p>
               <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
-              {entry.description && <p className="text-sm text-neutral-500 mt-1">{entry.description}</p>}
+              {entry.description && <p className="text-sm text-neutral-500 mt-1 break-words">{entry.description}</p>}
             </div>
           </div>
 

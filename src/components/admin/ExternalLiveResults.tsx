@@ -1,5 +1,6 @@
+import {ManualLiveRow} from './ManualLiveRow';
 import {ManualEntryForm} from './ManualEntryForm';
-import {resolveManual,type ManualEntry} from '../../utils/liveMatches';
+import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -103,14 +104,9 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
                 {twoPhases&&<><td className="p-2 border-t border-neutral-200 min-w-24"><input aria-label={`Faltas fase 2 de ${row.rider}`} className={input} inputMode="numeric" value={draft.secondFaults} onChange={e=>change(row.position,'secondFaults',e.target.value,mark)}/></td><td className="p-2 border-t border-neutral-200 min-w-28"><input aria-label={`Tiempo fase 2 de ${row.rider}`} className={input} inputMode="decimal" value={draft.secondSeconds} onChange={e=>change(row.position,'secondSeconds',e.target.value,mark)}/></td></>}
                 <td className="p-2 border-t border-neutral-200"><button disabled={busy!==null||isAbsent} onClick={()=>void save(row,mark)} className="bg-[#123E59] text-white px-4 h-10 rounded-lg text-sm font-bold disabled:opacity-50">{busy===row.position?'Guardando…':mark?'Corregir':'Guardar'}</button></td>
               </tr>;
-            })}</tbody>
+            })}{(chosen.manual ?? []).map(row => <ManualLiveRow key={row.id} row={row} eventId={eventId} classId={chosen.id} twoPhases={twoPhases} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} />)}</tbody>
           </table>
         </div>
-        {resolveManual(chosen.manual??[],chosen.entries).map(row=><div key={row.id} className="border-t py-3">
-          <strong>{row.rider} · {row.horse}</strong> · {row.target ? 'Asociado al ingreso '+row.target : row.position??'Sin número'} · {row.time_seconds==null?'Pendiente':row.obstacle_faults+' faltas · '+row.time_seconds+' s'}
-          <button className="ml-3 underline" onClick={()=>setEditing(row)}>Editar binomio y marca</button>
-          {!row.target&&row.suggestions.map(index=>{const candidate=chosen.entries[index];return <button key={index} className="block underline" onClick={()=>setEditing({...row,rider:candidate.rider,horse:candidate.horse,position:candidate.position,category:candidate.category||row.category})}>Revisar coincidencia con #{candidate.position} {candidate.rider} · {candidate.horse}</button>;})}
-        </div>)}
       </div>}
     </>}
     {error&&<p role="alert" className="text-red-700 text-sm">{error}</p>}{message&&<p role="status" className="text-green-700 text-sm">{message}</p>}

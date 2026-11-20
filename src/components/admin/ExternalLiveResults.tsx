@@ -9,7 +9,7 @@ import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../util
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {started:boolean;manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {started:boolean;publicVisible:boolean;manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
@@ -22,13 +22,27 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const tableRegion=useRef<HTMLDivElement>(null);
   const drag=useRef<{position:string;target:string;startX:number;startY:number;moved:boolean}|null>(null);
   const load=async()=>{
-    const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_list',eventId}});
-    if(error || !Array.isArray(data?.classes)) { setError('No se pudieron cargar las pruebas. Verificá que tu acceso siga vigente.'); setLoading(false); return; }
-    setClasses(data.classes); setLoading(false);
+    const [result,sharing]=await Promise.all([supabase.functions.invoke('external-assignments',{body:{action:'live_list',eventId}}),supabase.functions.invoke('live-visibility',{body:{action:'list',eventId}})]);
+    if(result.error || !Array.isArray(result.data?.classes) || sharing.error || !Array.isArray(sharing.data?.classes)) { setError('No se pudieron cargar las pruebas. Verificá que tu acceso siga vigente.'); setLoading(false); return; }
+    const visibility=new Map<string,boolean>(sharing.data.classes.map((c:{class_id:string;public_visible:boolean})=>[c.class_id,c.public_visible]));
+    setClasses(result.data.classes.map((c:LiveClass)=>({...c,publicVisible:visibility.get(c.id)??false}))); setLoading(false);
   };
   useEffect(()=>{void load();},[eventId]);
   const chosen=classes.find(c=>c.id===classId);
   const [starting,setStarting]=useState(false);
+  const [visibilityBusy,setVisibilityBusy]=useState(false);
+  const toggleVisibility=async()=>{
+    if(!chosen || visibilityBusy)return;
+    const visible=!chosen.publicVisible;
+    setVisibilityBusy(true);setError('');setMessage('');
+    try {
+      const {data,error}=await supabase.functions.invoke('live-visibility',{body:{action:'set',eventId,classId:chosen.id,visible}});
+      if(error||!data?.success)throw new Error('visibility failed');
+      await load();
+      setMessage(visible?'Los resultados en vivo se están compartiendo.':'Los resultados en vivo dejaron de compartirse. Los datos siguen guardados.');
+    } catch {setError('No se pudo cambiar la visibilidad. Verificá tu acceso e intentá nuevamente.');}
+    finally {setVisibilityBusy(false);}
+  };
   const startLive=async()=>{
     if(!chosen || starting)return;
     setStarting(true);setError('');setMessage('');
@@ -129,6 +143,10 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               </tr>;
             })}</tbody>
           </table>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-neutral-600">{chosen.publicVisible?'Los resultados en vivo son visibles en el sitio público.':'Los resultados en vivo no se comparten. Los datos siguen guardados.'}</p>
+          <button type="button" disabled={visibilityBusy} onClick={()=>void toggleVisibility()} className="min-h-11 rounded-lg border border-[#A61E4D] px-4 py-2 text-sm font-bold text-[#A61E4D] hover:bg-rose-50 disabled:opacity-50">{visibilityBusy?'Guardando…':chosen.publicVisible?'Dejar de compartir resultados en vivo':'Volver a compartir resultados en vivo'}</button>
         </div>
       </div>}
     </>}

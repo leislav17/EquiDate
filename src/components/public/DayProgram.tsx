@@ -8,11 +8,13 @@ import { publishedResults } from '../../utils/results';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 
-export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenListDocument, showResults = true }: {
+export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenListDocument, onOpenLiveResults, showResults = true, showLiveResults = showResults }: {
   eventId: string; date: string; arenaId?: string;
   onOpenStartList?: (classId: string) => void;
   onOpenListDocument?: (document: DocumentItem) => void;
+  onOpenLiveResults?: (classId: string) => void;
   showResults?: boolean;
+  showLiveResults?: boolean;
 }) {
   const { classes, arenas, events, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
   const [liveClasses,setLiveClasses]=useState<Set<string>>(new Set());
@@ -21,9 +23,9 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
     let active=true;
     setLiveClasses(new Set());
     const refresh=async()=>{const {data,error}=await supabase.from('live_result_starts').select('class_id').eq('public_visible',true).in('class_id',classIds.split(',')); if(active && !error)setLiveClasses(new Set((data??[]).map(row=>row.class_id)));};
-    if(showResults && classIds){void refresh(); const timer=window.setInterval(()=>void refresh(),15000); return ()=>{active=false;window.clearInterval(timer);};}
+    if(showLiveResults && classIds){void refresh(); const timer=window.setInterval(()=>void refresh(),15000); return ()=>{active=false;window.clearInterval(timer);};}
     return ()=>{active=false;};
-  },[classIds,showResults]);
+  },[classIds,showLiveResults]);
 
   const allDayClasses = classes.filter(entry => entry.eventId === eventId && entry.date === date);
   const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type) && (showResults || doc.type !== 'RESULT'));
@@ -87,7 +89,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
             {list && <a href={`#start-list/${entry.id}`} onClick={e => {
               if (onOpenStartList && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onOpenStartList(entry.id); }
             }} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Bell className="w-4 h-4" />Listado</a>}
-            {showResults && liveClasses.has(entry.id) && (events.find(event => event.id === eventId)?.discipline || 'jumping') === 'jumping' && <a href={`#live-results/${entry.id}`} aria-label="Resultados en vivo" title="Resultados en vivo" className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg bg-[#A61E4D] hover:bg-[#85163c] text-white"><Award aria-hidden="true" className="w-5 h-5" /></a>}
+            {showLiveResults && liveClasses.has(entry.id) && (events.find(event => event.id === eventId)?.discipline || 'jumping') === 'jumping' && <a href={`#live-results/${entry.id}`} onClick={e=>{if(onOpenLiveResults && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey){e.preventDefault();onOpenLiveResults(entry.id);}}} aria-label="Resultados en vivo" title="Resultados en vivo" className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg bg-[#A61E4D] hover:bg-[#85163c] text-white"><Award aria-hidden="true" className="w-5 h-5" /></a>}
             {results && <a href={`#results/${entry.id}`} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Award className="w-4 h-4" />Resultados</a>}
             {attached.filter(doc => (!list || doc.type !== 'START_LIST') && (!results || doc.type !== 'RESULT')).map(action)}
           </div>

@@ -7,6 +7,7 @@ import { getYouTubeId, transmissionLabel } from '../../utils/schedule';
 import { useSessionListSelection } from '../../hooks/useNavigationSession';
 import { DayProgram } from './DayProgram';
 import { StartListView } from './StartListView';
+import { LiveResultsView } from './LiveResultsView';
 import { DocumentViewer } from '../viewer/DocumentViewer';
 
 export function useTransmissionLabel(day: CompetitionDay) {
@@ -33,7 +34,7 @@ export function TransmissionButton({ day }: { day: CompetitionDay }) {
 
 function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: string; youtubeUrl: string }) {
   const { arenas, classes, documents, getEventById, setSelectedEventId, setActiveView } = useEquestrian();
-  const [selectedList, setSelectedList] = useSessionListSelection(`event:${day.eventId}:player:${day.id}:${arenaId || 'primary'}`, selection => selection.kind === 'structured'
+  const [selectedList, setSelectedList] = useSessionListSelection(`event:${day.eventId}:player:${day.id}:${arenaId || 'primary'}`, selection => selection.kind === 'structured' || selection.kind === 'live-results'
     ? classes.some(c => c.id === selection.id && c.eventId === day.eventId && c.date === day.date && (!arenaId || c.arenaId === arenaId))
     : documents.some(d => d.id === selection.id && d.eventId === day.eventId && d.eventDate === day.date));
   const restoredSelection = useRef(true);
@@ -58,7 +59,7 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
   const videoId = getYouTubeId(youtubeUrl);
   const arena = arenas.find(item => item.id === arenaId);
   const multiple = arenas.filter(item => item.eventId === day.eventId).length > 1;
-  const selectedClass = classes.find(c => c.id === (selectedList?.kind === 'structured' ? selectedList.id : selectedDocument?.classId));
+  const selectedClass = classes.find(c => c.id === (selectedList?.kind === 'structured' || selectedList?.kind === 'live-results' ? selectedList.id : selectedDocument?.classId));
   return <div className="max-w-4xl mx-auto lg:max-w-[1600px] lg:px-6 lg:pt-6 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6">
     {videoId ? <div ref={videoRef} className="sticky top-[65px] lg:top-[89px] z-30 bg-black lg:col-start-1 lg:row-start-1">
       <div className="aspect-video max-h-[50svh] w-full overflow-hidden">
@@ -81,13 +82,15 @@ function Player({ day, arenaId, youtubeUrl }: { day: CompetitionDay; arenaId?: s
     </div>
     <div ref={listsRef} className="px-4 pb-6 min-w-0 scroll-mt-20 lg:px-0 lg:sticky lg:top-[89px] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:max-h-[calc(100svh-113px)] lg:overflow-y-auto">
       {selectedList?.kind === 'structured' ? <StartListView key={selectedList.id} classId={selectedList.id} embedded desktopMetadataBelowVideo onBack={() => setSelectedList(null)} />
+        : selectedList?.kind === 'live-results' ? <LiveResultsView key={selectedList.id} classId={selectedList.id} embedded onBack={() => setSelectedList(null)} />
         : selectedList?.kind === 'document' ? <section aria-label="Listado de la prueba" className="space-y-3">
           <button onClick={() => setSelectedList(null)} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18} />Volver a las pruebas de la jornada</button>
           {selectedDocument ? <DocumentViewer document={selectedDocument} mode="inline" /> : <p>Este listado ya no está disponible.</p>}
         </section> : <>
           <h2 className="font-display text-xl font-bold text-[#123E59] mb-4">Pruebas de la jornada</h2>
-          <DayProgram eventId={day.eventId} date={day.date} arenaId={arenaId} showResults={false}
+          <DayProgram eventId={day.eventId} date={day.date} arenaId={arenaId} showResults={false} showLiveResults
             onOpenStartList={id => setSelectedList({ kind: 'structured', id })}
+            onOpenLiveResults={id => setSelectedList({kind:'live-results',id})}
             onOpenListDocument={doc => setSelectedList({ kind: 'document', id: doc.id })} />
         </>}
     </div>

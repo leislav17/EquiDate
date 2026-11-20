@@ -5,6 +5,15 @@ import { browserScrollEnvironment, persistNavigationScroll, type ScrollEnvironme
 import { BEFORE_NAVIGATION_EVENT } from '../src/utils/navigation.ts';
 const storage = () => { const data=new Map<string,string>(); return {getItem:(k:string)=>data.get(k)||null,setItem:(k:string,v:string)=>{data.set(k,v);}}; };
 
+test('a live-result selection in the player survives reload and remains scoped to its day',()=>{
+  const s=storage(), key='event:A:player:day-one:arena-one';
+  writeNavigationEntry(key,{selection:{kind:'live-results',id:'class-1'}},s,100);
+  assert.deepEqual(readNavigationEntry(key,s,101)?.selection,{kind:'live-results',id:'class-1'});
+  assert.equal(readNavigationEntry('event:A:player:day-two:arena-one',s,101),undefined);
+  writeNavigationEntry(key,{selection:null},s,102);
+  assert.equal(readNavigationEntry(key,s,103)?.selection,null);
+});
+
 test('Reload preserves stable day IDs, important info and per-view scroll without mixing contests', () => {
   const s=storage();
   writeNavigationEntry('event:A',{open:['day-sunday'],info:true},s,100);

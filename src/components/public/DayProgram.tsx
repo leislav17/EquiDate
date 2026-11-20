@@ -20,7 +20,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
   useEffect(()=>{
     let active=true;
     setLiveClasses(new Set());
-    const refresh=async()=>{const {data,error}=await supabase.from('live_result_starts').select('class_id').in('class_id',classIds.split(',')); if(active && !error)setLiveClasses(new Set((data??[]).map(row=>row.class_id)));};
+    const refresh=async()=>{const {data,error}=await supabase.from('live_result_starts').select('class_id').eq('public_visible',true).in('class_id',classIds.split(',')); if(active && !error)setLiveClasses(new Set((data??[]).map(row=>row.class_id)));};
     if(showResults && classIds){void refresh(); const timer=window.setInterval(()=>void refresh(),15000); return ()=>{active=false;window.clearInterval(timer);};}
     return ()=>{active=false;};
   },[classIds,showResults]);

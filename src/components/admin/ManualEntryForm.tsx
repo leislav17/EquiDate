@@ -52,11 +52,11 @@ export function ManualEntryForm({ eventId, classId, row, done }: {
       { name: 'horse', label: 'Caballo', value: row?.horse, required: true },
       { name: 'category', label: 'Categoría', value: row?.category, required: true },
       { name: 'entryLabel', label: 'Orden de ingreso (opcional)', value: row?.entry_label, required: false },
-    ].map(field => <label key={field.name} className="text-sm">{field.label}
+    ].map(field => <label key={field.name} className="text-sm w-full sm:w-auto">{field.label}
       <input name={field.name} defaultValue={field.value ?? ''} required={field.required}
-        className="block border rounded p-2 w-40" />
+        className="block border rounded p-2 w-full sm:w-40 mt-1" />
     </label>)}
-    <button disabled={busy} className="rounded bg-[#123E59] text-white px-4 py-2">
+    <button disabled={busy} className="w-full sm:w-auto rounded bg-[#123E59] text-white px-4 py-2 min-h-10 font-bold">
       {busy ? 'Guardando…' : 'Guardar binomio'}
     </button>
     {error && <p role="alert" className="text-red-700">{error}</p>}

@@ -203,13 +203,13 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-64px)] pb-16">
-      <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
+      <div className="equidate-container py-5 sm:py-6 space-y-4">
         {/* ======================================================== */}
         {/* CABECERA PRINCIPAL                                       */}
         {/* ======================================================== */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="font-display text-2xl sm:text-3xl font-black text-neutral-900 tracking-tight">
                 Gestionar concursos
               </h1>
@@ -269,7 +269,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
           {/* Selectores de filtros en cuadrícula */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
             {/* 1. Período */}
-            <div>
+            <div className="min-w-0">
               <label className="block text-[11px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
                 Período
               </label>
@@ -288,7 +288,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
             </div>
 
             {/* 2. Estado */}
-            <div>
+            <div className="min-w-0">
               <label className="block text-[11px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
                 Estado
               </label>
@@ -307,7 +307,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
             </div>
 
             {/* 3. Año */}
-            <div>
+            <div className="min-w-0">
               <label className="block text-[11px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
                 Año
               </label>
@@ -329,7 +329,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
             </div>
 
             {/* 4. Mes */}
-            <div>
+            <div className="min-w-0">
               <label className="block text-[11px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
                 Mes
               </label>
@@ -405,7 +405,7 @@ export const AdminCompetitionList: React.FC<AdminCompetitionListProps> = ({
               Página {safeCurrentPage} de {totalPages} · {totalItems} concursos en total
             </span>
 
-            <div className="flex items-center gap-2 order-1 sm:order-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 order-1 sm:order-2">
               <button
                 type="button"
                 disabled={safeCurrentPage <= 1}

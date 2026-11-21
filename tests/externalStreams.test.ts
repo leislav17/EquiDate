@@ -1,0 +1,34 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+
+test('external stream write checks current authorization and target on each operation', async () => {
+  const db = new PGlite();
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
+    create table auth.users(id uuid primary key, raw_app_meta_data jsonb, banned_until timestamptz);
+    create table events(id uuid primary key,end_date date);
+    create table external_event_assignments(user_id uuid,event_id uuid,primary key(user_id,event_id));
+    create table competition_days(id uuid primary key,event_id uuid,youtube_url text);
+    create table competition_arenas(id uuid primary key,event_id uuid,is_primary boolean);
+    create table competition_streams(event_id uuid,day_id uuid,arena_id uuid,youtube_url text,unique(day_id,arena_id));`);
+  await db.exec(readFileSync('supabase/migrations/20261118111756_external_stream_access.sql','utf8'));
+  const user='00000000-0000-0000-0000-000000000001', event='00000000-0000-0000-0000-000000000002', day='00000000-0000-0000-0000-000000000003', arena='00000000-0000-0000-0000-000000000004', other='00000000-0000-0000-0000-000000000005';
+  await db.query("insert into auth.users values ($1,'{\"equidate_external\":true}',null)",[user]);
+  await db.query("insert into events values ($1,current_date),($2,current_date)",[event,other]);
+  await db.query('insert into external_event_assignments values ($1,$2)',[user,event]);
+  await db.query('insert into competition_days values ($1,$2,null)',[day,event]);
+  await db.query('insert into competition_arenas values ($1,$2,true)',[arena,event]);
+  const call=(e=event, a=arena, url:string|null='https://youtu.be/abc12345678')=>db.query('select equidate_external_save_stream($1,$2,$3,$4,$5)',[user,e,day,a,url]);
+  await call(); assert.equal((await db.query('select * from competition_streams')).rows.length,1);
+  await assert.rejects(call(other));
+  await db.query('delete from external_event_assignments'); await assert.rejects(call());
+  await db.query('insert into external_event_assignments values ($1,$2)',[user,event]);
+  await db.query("update auth.users set banned_until=now()+interval '1 day'"); await assert.rejects(call());
+  await db.query("update auth.users set banned_until=null"); await db.query("update events set end_date=current_date-3 where id=$1",[event]); await assert.rejects(call());
+  await db.query('update events set end_date=current_date where id=$1',[event]); await call(event,arena,null);
+  assert.equal((await db.query('select * from competition_streams')).rows.length,0);
+  assert.equal((await db.query<{youtube_url: string | null}>('select youtube_url from competition_days')).rows[0].youtube_url,null);
+  assert.equal((await db.query<{allowed: boolean}>("select has_function_privilege('authenticated','public.equidate_external_save_stream(uuid,uuid,uuid,uuid,text)','execute') as allowed")).rows[0].allowed,false);
+  await db.close();
+});

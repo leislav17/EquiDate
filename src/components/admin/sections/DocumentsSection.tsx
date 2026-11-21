@@ -408,7 +408,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
   };
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 min-w-0">
       {/* ========================================================= */}
       {/* 1. DOCUMENTOS GENERALES (Anteprograma, Reglamento, Otros) */}
       {/* ========================================================= */}
@@ -460,7 +460,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
                 <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
                   Tipo de Documento General *
                 </label>
-                <div className="grid grid-cols-3 gap-2 max-w-md">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-md">
                   <button
                     type="button"
                     onClick={() => setGeneralDocType('PROGRAM')}
@@ -639,14 +639,14 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
             {generalDocs.map((doc, idx) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 sm:p-4 rounded-xl border border-neutral-200 bg-white hover:border-neutral-300 transition-all"
+                className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-3 sm:p-4 rounded-xl border border-neutral-200 bg-white hover:border-neutral-300 transition-all"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-8 h-8 rounded-lg bg-[#123E59]/10 text-[#123E59] flex items-center justify-center shrink-0">
                     <FileText className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-neutral-100 text-neutral-700">
                         {documentTypeLabel(doc.type)}
                       </span>
@@ -657,7 +657,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-2">
                   <div className="flex items-center">
                     <button
                       type="button"
@@ -718,7 +718,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
         </div>
 
         {/* Selector horizontal de jornadas */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto max-w-full min-w-0 pb-2 scrollbar-none">
           {dates.map((dayDate) => {
             const isSelected = dayDate === selectedDate;
             const header = formatDayHeader(dayDate);
@@ -1016,7 +1016,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
               return (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-neutral-200 bg-white hover:border-neutral-300 transition-all"
+                  className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-3.5 sm:p-4 rounded-xl border border-neutral-200 bg-white hover:border-neutral-300 transition-all"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
@@ -1042,7 +1042,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
                         </span>
 
                         {assignedClass && (
-                          <span className="text-xs font-bold text-neutral-700">
+                          <span className="text-xs font-bold text-neutral-700 break-words">
                             Prueba {assignedClass.number} · {assignedClass.name}
                           </span>
                         )}
@@ -1059,7 +1059,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                  <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-2">
                     <button
                       type="button"
                       onClick={() => setViewingDocumentId(doc.id)}
@@ -1176,7 +1176,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
             {unassignedDocs.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-white border border-amber-200 text-xs"
+                className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-3 rounded-xl bg-white border border-amber-200 text-xs"
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-neutral-900 truncate">{doc.name}</p>
@@ -1186,7 +1186,7 @@ export const DocumentsSection: React.FC<DocumentsSectionProps> = ({ event }) => 
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0 ml-3">
+                <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-3">
                   <button
                     type="button"
                     onClick={() => setViewingDocumentId(doc.id)}

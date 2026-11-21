@@ -38,7 +38,7 @@ export function useNavigationScroll(key: string | null, ready: boolean, route: s
   }, [key, ready, route]);
 }
 
-export function useSessionListSelection(key: string, valid: (selection: {kind:'structured'|'document';id:string}) => boolean) {
+export function useSessionListSelection(key: string, valid: (selection: {kind:'structured'|'document'|'live-results';id:string}) => boolean) {
   const [saved, setSaved] = useState(() => readNavigationEntry(key)?.selection || null);
   const selection = saved && valid(saved) ? saved : null;
   useEffect(() => {

@@ -5,14 +5,27 @@ import { documentTypeLabel, isGeneralDocumentType } from '../../utils/documents'
 import { DocumentItem } from '../../types/equestrian';
 import { publishedStartList, startParticipantCount } from '../../utils/startLists';
 import { publishedResults } from '../../utils/results';
+import { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 
-export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenListDocument, showResults = true }: {
+export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenListDocument, onOpenLiveResults, showResults = true, showLiveResults = showResults }: {
   eventId: string; date: string; arenaId?: string;
   onOpenStartList?: (classId: string) => void;
   onOpenListDocument?: (document: DocumentItem) => void;
+  onOpenLiveResults?: (classId: string) => void;
   showResults?: boolean;
+  showLiveResults?: boolean;
 }) {
-  const { classes, arenas, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
+  const { classes, arenas, events, documents, setViewingDocumentId, startHeads, startVersions, resultHeads, resultVersions } = useEquestrian();
+  const [liveClasses,setLiveClasses]=useState<Set<string>>(new Set());
+  const classIds=classes.filter(c=>c.eventId===eventId && c.date===date).map(c=>c.id).sort().join(',');
+  useEffect(()=>{
+    let active=true;
+    setLiveClasses(new Set());
+    const refresh=async()=>{const {data,error}=await supabase.from('live_result_starts').select('class_id').eq('public_visible',true).in('class_id',classIds.split(',')); if(active && !error)setLiveClasses(new Set((data??[]).map(row=>row.class_id)));};
+    if(showLiveResults && classIds){void refresh(); const timer=window.setInterval(()=>void refresh(),15000); return ()=>{active=false;window.clearInterval(timer);};}
+    return ()=>{active=false;};
+  },[classIds,showLiveResults]);
 
   const allDayClasses = classes.filter(entry => entry.eventId === eventId && entry.date === date);
   const dayDocuments = documents.filter(doc => doc.eventId === eventId && doc.eventDate === date && !isGeneralDocumentType(doc.type) && (showResults || doc.type !== 'RESULT'));
@@ -39,10 +52,10 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
       key={doc.id}
       title={doc.name}
       onClick={() => doc.type === 'START_LIST' && onOpenListDocument ? onOpenListDocument(doc) : setViewingDocumentId(doc.id)}
-      className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left cursor-pointer"
+      className="inline-flex items-center gap-2 min-h-11 max-w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59] text-left cursor-pointer"
     >
       {doc.type === 'RESULT' ? <Award className="w-4 h-4 shrink-0" /> : <Bell className="w-4 h-4 shrink-0" />}
-      <span>{documentTypeLabel(doc.type)}</span>
+      <span className="break-words">{documentTypeLabel(doc.type)}</span>
     </button>
   );
 
@@ -64,9 +77,9 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
               <div className="text-[#123E59] text-sm font-bold shrink-0 pt-0.5">{scheduleLabel}</div>
             ) : null}
             <div className="min-w-0 flex-1">
-              <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D]">{identLabel}</p>
+              <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D] break-words">{identLabel}</p>
               <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
-              {entry.description && <p className="text-sm text-neutral-500 mt-1">{entry.description}</p>}
+              {entry.description && <p className="text-sm text-neutral-500 mt-1 break-words">{entry.description}</p>}
             </div>
           </div>
 
@@ -76,6 +89,7 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
             {list && <a href={`#start-list/${entry.id}`} onClick={e => {
               if (onOpenStartList && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onOpenStartList(entry.id); }
             }} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Bell className="w-4 h-4" />Listado</a>}
+            {showLiveResults && liveClasses.has(entry.id) && (events.find(event => event.id === eventId)?.discipline || 'jumping') === 'jumping' && <a href={`#live-results/${entry.id}`} onClick={e=>{if(onOpenLiveResults && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey){e.preventDefault();onOpenLiveResults(entry.id);}}} aria-label="Resultados en vivo" title="Resultados en vivo" className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg bg-[#A61E4D] hover:bg-[#85163c] text-white"><Award aria-hidden="true" className="w-5 h-5" /></a>}
             {results && <a href={`#results/${entry.id}`} className="inline-flex items-center gap-2 min-h-11 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:bg-neutral-100 text-xs font-bold text-[#123E59]"><Award className="w-4 h-4" />Resultados</a>}
             {attached.filter(doc => (!list || doc.type !== 'START_LIST') && (!results || doc.type !== 'RESULT')).map(action)}
           </div>

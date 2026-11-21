@@ -142,6 +142,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resource = resourceHash(routeLocation);
     const ownerId = resource.startsWith('#document-') ? documents.find(doc => doc.id === resource.slice(10))?.eventId
       : resource.startsWith('#start-list/') ? classes.find(entry => entry.id === resource.slice(12))?.eventId
+      : resource.startsWith('#live-results/') ? classes.find(entry => entry.id === resource.slice(14))?.eventId
       : resource.startsWith('#results/') ? classes.find(entry => entry.id === resource.slice(9))?.eventId
       : resource.startsWith('#transmission/') ? days.find(day => day.id === resource.slice(14).split('/')[0])?.eventId : null;
     const event = ownerId ? events.find(event => event.id === ownerId && event.status === 'published') : resolveEvent(routeLocation, events);
@@ -240,7 +241,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (active) { setVerifiedAdmin(!error && data === true); setVerifiedToken(session.access_token); setPermissionLoading(false); }
     })().catch(() => { if (active) { setVerifiedAdmin(false); setVerifiedToken(session.access_token); setPermissionLoading(false); } });
     return () => { active = false; };
-  }, [session]);
+  }, [session?.access_token]);
   const [viewingDocumentId, setViewingDocumentIdState] = useState<string | null>(
     () => resourceHash(readLocation()).startsWith('#document-') ? resourceHash(readLocation()).slice(10) : null
   );
@@ -408,7 +409,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setClasses((classResponse.data || []).map(entry => ({
           id: entry.id, dayId: entry.day_id, eventId: entry.event_id, arenaId: entry.arena_id || '',
           date: entry.event_date, time: entry.start_time?.slice(0, 5) || '',
-          number: entry.number, name: entry.name, description: entry.description || '', order: entry.sort_order,
+          number: entry.number, name: entry.name, description: entry.description || '', liveFormat: entry.live_format === 'double_round' ? 'double_round' : null, order: entry.sort_order,
           isApproximate: Boolean(entry.is_approximate),
           isContinuous: Boolean(entry.is_continuous),
           participantCount: typeof entry.participant_count === 'number' ? entry.participant_count : null,
@@ -869,6 +870,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       number: entry.number.trim(),
       name: entry.name.trim(),
       description: entry.description.trim(),
+      live_format: entry.liveFormat ?? null,
       sort_order: entry.order,
     };
     const payloadWithFlags = {
@@ -938,6 +940,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         number: entry.number.trim(),
         name: entry.name.trim(),
         description: entry.description.trim(),
+        live_format: entry.liveFormat ?? null,
         sort_order: entry.order,
         is_approximate: Boolean(entry.isApproximate),
         is_continuous: Boolean(entry.isContinuous),

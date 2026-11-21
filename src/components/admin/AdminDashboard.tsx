@@ -25,11 +25,11 @@ export const AdminDashboard: React.FC = () => {
     { title: 'Asociaciones de jinetes', url: '/admin/jinetes', icon: Users },
     { title: 'Gestionar información útil', url: '/admin/informacion-util', icon: Link },
   ];
-  return <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+  return <div className="equidate-container py-5 sm:py-6 space-y-6">
     <h1 className="font-display text-2xl font-black text-[#123E59]">Panel de administración</h1>
-    <div className="grid sm:grid-cols-3 gap-3">{links.map(({ title, url, icon: Icon }) =>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">{links.map(({ title, url, icon: Icon }) =>
       <button key={url} onClick={() => navigate(url)} className="bg-white border border-neutral-200 rounded-xl p-5 text-left flex items-center gap-3 hover:border-[#123E59] min-h-24 text-[#123E59] font-bold">
-        <Icon className="w-6 h-6 shrink-0" /><span>{title}</span>
+        <Icon className="w-6 h-6 shrink-0" /><span className="min-w-0 break-words">{title}</span>
       </button>)}</div>
     {!!recent.length && <section aria-labelledby="recent-contests-title">
       <h2 id="recent-contests-title" className="font-bold text-[#123E59] mb-3">Concursos recientes</h2>

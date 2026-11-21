@@ -126,7 +126,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
   if (!isNew && !event && !isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+      <div className="equidate-container py-12 text-center">
         <p className="text-neutral-600 font-semibold mb-4">
           Concurso no encontrado o eliminado.
         </p>
@@ -153,7 +153,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-64px)] pb-16">
-      <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
+      <div className="equidate-container py-5 sm:py-6 space-y-4">
         {/* ======================================================== */}
         {/* ENCABEZADO DEDICADO DEL CONCURSO                         */}
         {/* ======================================================== */}
@@ -220,7 +220,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
               </span>
             </div>
 
-            <h1 className="font-display text-xl sm:text-2xl font-black text-neutral-900 tracking-tight leading-tight">
+            <h1 className="font-display text-xl sm:text-2xl font-black text-neutral-900 tracking-tight leading-tight break-words">
               {event ? event.name : 'Crear Nuevo Concurso'}
             </h1>
 

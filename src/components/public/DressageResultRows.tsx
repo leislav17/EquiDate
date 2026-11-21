@@ -47,7 +47,7 @@ export function DressageResultRows({ entries, columns }: { entries: ResultEntry[
             </summary>
             <dl className="mx-3 mb-3 divide-y divide-neutral-200 rounded-lg bg-neutral-50 px-3 text-sm">
               {available.map(judge => <div key={judge.key} className="flex items-start justify-between gap-3 py-2">
-                <dt className="text-neutral-700">{judge.label}</dt>
+                <dt className="min-w-0 break-words text-neutral-700">{judge.label}</dt>
                 <dd className="shrink-0 text-right font-semibold tabular-nums text-[#123E59]"><JudgeMark row={row} judge={judge} /></dd>
               </div>)}
             </dl>

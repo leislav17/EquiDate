@@ -4,7 +4,7 @@ import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical, Play, Plus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { hasTwoPhases } from '../../utils/livePhases';
+import { hasTwoPhases, isDoubleRound } from '../../utils/livePhases';
 import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
@@ -98,7 +98,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     const secondsText=values.seconds.trim().replace(',','.');
     if (!/^\d+$/.test(values.faults) || Number(values.faults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondsText) || Number(secondsText)>9999999) {setError('Ingresá faltas enteras y un tiempo válido con hasta dos decimales.');return;}
     const secondSeconds=values.secondSeconds.trim().replace(',','.');
-    const isDouble=chosen.liveFormat==='double_round';
+    const isDouble=isDoubleRound(chosen.liveFormat,chosen.name,chosen.description);
     const qualified=chosen.roundQualifiers.includes(`p:${chosen.versionId}:${row.position}`);
     const hasSecond=(isDouble?qualified:hasTwoPhases(chosen.description)) && (values.secondFaults.trim() !== '' || secondSeconds !== '');
     if (hasSecond && (!/^\d+$/.test(values.secondFaults) || Number(values.secondFaults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondSeconds) || Number(secondSeconds)>9999999)) {setError('Completá faltas y tiempo válidos para la segunda fase, o dejá ambos campos vacíos.');return;}
@@ -113,7 +113,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const dragButton=(key:string,rider:string,index:number)=><button type="button" disabled={busy!==null} aria-label={`Arrastrar a ${rider}; también podés usar las flechas arriba y abajo`} title="Arrastrar para cambiar el orden" className="min-w-11 min-h-11 inline-flex items-center justify-center text-[#123E59] cursor-grab active:cursor-grabbing touch-none select-none disabled:opacity-50"
     onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:key,target:key,startX:e.clientX,startY:e.clientY,moved:false};}}
     onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(key,target);}}}><GripVertical aria-hidden="true" size={20}/></button>;
-  const isDouble=chosen?.liveFormat==='double_round';
+  const isDouble=!!chosen && isDoubleRound(chosen.liveFormat,chosen.name,chosen.description);
   const twoPhases=!!chosen && (isDouble||hasTwoPhases(chosen.description));
   const qualifierBox=(key:string,checked:boolean,rider:string)=><label className="flex items-center gap-2 mt-2 text-xs font-semibold text-[#123E59]"><input type="checkbox" checked={checked} disabled={busy!==null} onChange={e=>void setQualified(key,e.target.checked)} aria-label={`Pasa al segundo recorrido: ${rider}`} className="h-4 w-4 accent-[#A61E4D]"/>Pasa al segundo recorrido</label>;
   return <section className="equidate-container py-6 sm:py-8 space-y-5">

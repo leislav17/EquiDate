@@ -11,3 +11,10 @@ export function isDoubleRound(format?: string|null, name?: string|null, descript
   const text=`${name ?? ''} ${description ?? ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   return /(^|[^a-z0-9_])(?:dr|doble\s+recorrido)(?=$|[^a-z0-9_])/.test(text);
 }
+
+/** A single jump-off requires an explicit selection for its second result. */
+export function isJumpOff(format?: string|null, name?: string|null, description?: string|null): boolean {
+  if (format) return false;
+  const text = `${name ?? ''} ${description ?? ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /(^|[^a-z0-9_])(?:1\s*(?:d|desempate)|un\s+desempate)(?=$|[^a-z0-9_])/.test(text);
+}

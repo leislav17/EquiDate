@@ -662,7 +662,7 @@ export function ClassForm({
       <fieldset disabled={busy} className="space-y-3">
         <label className="block text-xs font-semibold text-neutral-700">Tipo de prueba para resultados en vivo
           <select className={field} value={liveFormat} onChange={e=>setLiveFormat(e.target.value as 'double_round'|'')}>
-            <option value="">Automático según descripción</option>
+            <option value="">Automático según nombre o descripción</option>
             <option value="double_round">Doble recorrido</option>
           </select>
         </label>

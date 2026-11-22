@@ -33,7 +33,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'combined_reorder' || body.action === 'manual_save' || body.action === 'manual_result_save' || body.action === 'manual_tracking' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
+  if (body.action === 'combined_reorder' || body.action === 'live_edit_entry' || body.action === 'manual_save' || body.action === 'manual_result_save' || body.action === 'manual_tracking' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
     if(body.action==='manual_result_save') {
@@ -82,18 +82,40 @@ Deno.serve(async (req: Request) => {
     }
     const { data: assignment, error: assignmentError } = await service.from('external_event_assignments').select('event:events(id,name,end_date,discipline)').eq('user_id', auth.user.id).eq('event_id', body.eventId).maybeSingle();
     if (assignmentError || !assignment?.event || !isCurrent(assignment.event.end_date) || (assignment.event.discipline && assignment.event.discipline !== 'jumping')) return reply({ error: 'Concurso no autorizado.' }, 403);
-    if (body.action === 'manual_save') {
-      const {data: allowed} = await service.from('competition_classes').select('id').eq('event_id',body.eventId).eq('id',body.classId).maybeSingle();
-      if (!allowed) return reply({error:'Prueba no autorizada.'},403);
+    if (body.action === 'live_edit_entry' || body.action === 'manual_save') {
       const row = body.row;
-      if (!row || typeof row.rider !== 'string' || typeof row.horse !== 'string') return reply({error:'Binomio inválido.'},400);
-      const values: Record<string, unknown> = {rider:row.rider.trim(),horse:row.horse.trim(),category:row.category || ''};
-      for (const field of ['position','entry_label','obstacle_faults','time_seconds','phase2_faults','phase2_seconds']) {
-        if (Object.prototype.hasOwnProperty.call(row, field)) values[field] = row[field];
+      if (typeof body.classId !== 'string' || !row ||
+          ![row.rider, row.horse, row.category].every(value =>
+            typeof value === 'string' && value.trim().length >= 1 && value.trim().length <= 160)) {
+        return reply({ error: 'Completá jinete, caballo y categoría.' }, 400);
       }
-      const result = body.edit ? await service.from('manual_live_entries').update(values).eq('class_id',allowed.id).eq('id',row.id).select('id').single()
-        : await service.from('manual_live_entries').insert({...values,id:row.id,class_id:allowed.id});
-      return result.error ? reply({error:'Revisá los datos del binomio.'},400) : reply({success:true});
+      const names = { rider: row.rider.trim(), horse: row.horse.trim(), category: row.category.trim() };
+      if (body.action === 'live_edit_entry') {
+        const { error } = await service.rpc('equidate_edit_live_entry', {
+          actor: auth.user.id, target_event: body.eventId, target_class: body.classId,
+          start_version: body.startVersionId ?? null, target_position: body.position ?? null,
+          target_manual: body.manualId ?? null, rider_name: names.rider,
+          horse_name: names.horse, category_name: names.category,
+        });
+        return error ? reply({ error: 'No se pudo editar el binomio.' }, 400) : reply({ success: true });
+      }
+
+      if (body.edit || typeof row.id !== 'string' ||
+          (row.entry_label != null && (typeof row.entry_label !== 'string' ||
+            !/^(?:[A-Z]|[1-9][0-9]{0,15}(?: bis)?)$/.test(row.entry_label)))) {
+        return reply({ error: 'Binomio inválido.' }, 400);
+      }
+      const { data: allowed } = await service.from('competition_classes').select('id')
+        .eq('event_id', body.eventId).eq('id', body.classId).maybeSingle();
+      if (!allowed) return reply({ error: 'Prueba no autorizada.' }, 403);
+      const { data: live } = await service.from('live_start_snapshots').select('class_id')
+        .eq('class_id', allowed.id).maybeSingle();
+      if (!live) return reply({ error: 'La carga del vivo todavía no comenzó.' }, 409);
+
+      const { error } = await service.from('manual_live_entries').insert({
+        ...names, id: row.id, class_id: allowed.id, entry_label: row.entry_label ?? null,
+      });
+      return error ? reply({ error: 'No se pudo agregar el binomio.' }, 400) : reply({ success: true });
     }
     const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);

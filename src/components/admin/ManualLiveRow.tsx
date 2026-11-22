@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { ManualEntry } from '../../utils/liveMatches';
 
-export function ManualLiveRow({ row, eventId, classId, versionId, twoPhases, doubleRound, jumpOff, secondEnabled, qualifierControl, onSaved, dragHandle, dragging, current, absent, disabled, onTracking }: {
-  row: ManualEntry; eventId: string; classId: string; versionId:string; twoPhases: boolean; doubleRound:boolean; jumpOff:boolean; secondEnabled:boolean; qualifierControl:React.ReactNode; onSaved: () => void; dragHandle: React.ReactNode; dragging:boolean; current:boolean; absent:boolean; disabled:boolean; onTracking:(action:'current'|'absent'|'restore')=>void;
+export function ManualLiveRow({ row, eventId, classId, versionId, twoPhases, doubleRound, jumpOff, secondEnabled, qualifierControl, onSaved, onEdit, dragHandle, dragging, current, absent, disabled, onTracking }: {
+  row: ManualEntry; eventId: string; classId: string; versionId:string; twoPhases: boolean; doubleRound:boolean; jumpOff:boolean; secondEnabled:boolean; qualifierControl:React.ReactNode; onSaved: () => void; onEdit: () => void; dragHandle: React.ReactNode; dragging:boolean; current:boolean; absent:boolean; disabled:boolean; onTracking:(action:'current'|'absent'|'restore')=>void;
 }) {
   const [faults, setFaults] = useState(row.obstacle_faults?.toString() ?? '0');
   const [seconds, setSeconds] = useState(row.time_seconds?.toString() ?? '');
@@ -33,7 +34,7 @@ export function ManualLiveRow({ row, eventId, classId, versionId, twoPhases, dou
   };
   return <tr data-live-key={`m:${row.id}`} className={'grid grid-cols-2 gap-x-2.5 gap-y-2.5 p-3 md:table-row md:p-0 transition-colors '+(current?'bg-rose-50 ':'bg-white ')+(dragging?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
     <td className="col-span-2 block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-72 min-w-0">
-      <div className="flex items-start gap-1">{dragHandle}<div className="min-w-0 flex-1"><span className="font-bold text-[#123E59] break-words">{row.rider}</span>
+      <div className="flex items-start gap-1">{dragHandle}<div className="min-w-0 flex-1"><span className="font-bold text-[#123E59] break-words">{row.rider}</span><button type="button" disabled={disabled} onClick={onEdit} aria-label={`Editar binomio de ${row.rider}`} title="Editar binomio" className="ml-2 p-2 text-[#123E59] disabled:opacity-50"><Pencil size={17}/></button>
       <span className="block text-neutral-600 break-words">{row.horse} · {row.category || 'Sin categoría'}</span>
       <span className="block mt-1 text-xs font-bold text-[#A61E4D]">{current?'En pista':absent?'No se presentó':row.time_seconds == null ? 'Pendiente' : 'Resultado cargado'}</span>
       <div className="flex flex-wrap gap-3 mt-1"><button type="button" disabled={disabled||current||absent} onClick={()=>onTracking('current')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">Marcar en pista</button>{row.time_seconds==null&&<button type="button" disabled={disabled} onClick={()=>onTracking(absent?'restore':'absent')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">{absent?'Volver a pendiente':'No se presentó'}</button>}</div>{qualifierControl}</div></div>

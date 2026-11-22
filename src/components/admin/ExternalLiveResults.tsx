@@ -1,8 +1,8 @@
 import {ManualLiveRow} from './ManualLiveRow';
-import {ManualEntryForm} from './ManualEntryForm';
+import {ManualEntryForm, type LiveEntryEdit} from './ManualEntryForm';
 import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, GripVertical, Play, Plus } from 'lucide-react';
+import { ArrowLeft, GripVertical, Pencil, Play, Plus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
 import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
@@ -18,7 +18,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const [error,setError]=useState(''), [message,setMessage]=useState('');
   const [dragging,setDragging]=useState<string|null>(null);
   const [previewOrder,setPreviewOrder]=useState<string[]|null>(null);
-  const [editing,setEditing]=useState<ManualEntry|'new'|null>(null);
+  const [editing,setEditing]=useState<LiveEntryEdit|'new'|null>(null);
   const tableRegion=useRef<HTMLDivElement>(null);
   const drag=useRef<{position:string;target:string;startX:number;startY:number;moved:boolean}|null>(null);
   const load=async()=>{
@@ -127,7 +127,13 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
       {chosen && !chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs"><button type="button" disabled={starting} onClick={()=>void startLive()} className="inline-flex items-center gap-2 bg-[#A61E4D] text-white px-4 min-h-11 rounded-lg font-bold disabled:opacity-50"><Play size={18}/>{starting?'Iniciando…':'Iniciar carga de resultados en vivo'}</button></div>}
       {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs min-w-0">
         <div className="flex justify-end mb-4"><button type="button" className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-[#A61E4D] text-white text-sm font-bold hover:bg-[#85163c]" onClick={()=>setEditing(editing==='new'?null:'new')}><Plus size={18} aria-hidden="true"/>Agregar binomio</button></div>
-        {editing&&<ManualEntryForm key={editing==='new'?'new':editing.id} classId={chosen.id} eventId={eventId} twoPhases={twoPhases} row={editing==='new'?undefined:editing} done={()=>{setEditing(null);void load();}}/>}
+        {editing&&<ManualEntryForm
+          key={editing==='new'?'new':'id' in editing?editing.id:editing.position}
+          classId={chosen.id} eventId={eventId} versionId={chosen.versionId}
+          row={editing==='new'?undefined:editing}
+          cancel={()=>setEditing(null)}
+          done={()=>{setEditing(null);void load();}}
+        />}
         <h2 className="font-bold text-[#123E59]">Orden de ingreso</h2>
         <p className="text-xs text-neutral-500 mt-1 mb-4">Arrastrá el ícono para cambiar el orden del vivo. Las marcas sin categoría no se muestran públicamente.</p>
         <div className="overflow-x-hidden md:overflow-auto md:max-h-[70vh] border border-neutral-200 rounded-xl" role="region" aria-label="Tabla de carga de resultados" tabIndex={0}
@@ -140,7 +146,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               <tr><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th>{twoPhases&&<><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th></>}</tr>
             </thead>
             <tbody className="block divide-y divide-neutral-200 md:table-row-group md:divide-y-0">{ordered.map((key,index)=>{
-              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);const qualified=chosen.roundQualifiers.includes(key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} doubleRound={isDouble} jumpOff={jumpOff} secondEnabled={!isDouble||qualified} qualifierControl={isDouble?qualifierBox(key,qualified,row.rider):null} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
+              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);const qualified=chosen.roundQualifiers.includes(key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} doubleRound={isDouble} jumpOff={jumpOff} secondEnabled={!isDouble||qualified} qualifierControl={isDouble?qualifierBox(key,qualified,row.rider):null} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onEdit={()=>setEditing(row)} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
               const row=chosen.entries.find(item=>`p:${item.position}`===key); if(!row)return null;
               const mark=chosen.marks.find(m=>m.position===row.position);
               const draft=drafts[row.position]||{faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''};
@@ -150,6 +156,11 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               return <tr key={key} data-live-key={key} className={'grid grid-cols-2 gap-x-2.5 gap-y-2.5 p-3 md:table-row md:p-0 transition-colors '+(isCurrent?'bg-rose-50 ':'bg-white ')+(dragging===key?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
                 <td className="col-span-2 block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-72 min-w-0"><div className="flex items-start gap-1">
                   {dragButton(key,row.rider,index)}
+                  <button type="button" disabled={busy!==null} onClick={()=>setEditing(row)}
+                    aria-label={`Editar binomio de ${row.rider}`} title="Editar binomio"
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center text-[#123E59] disabled:opacity-50">
+                    <Pencil size={17}/>
+                  </button>
                   <div className="min-w-0 flex-1"><span className="font-bold text-[#123E59] break-words">{row.rider}</span><span className="block text-neutral-600 break-words">{row.horse}{row.category?' · '+row.category:' · Sin categoría'}</span><span className="block mt-1 text-xs font-bold text-[#A61E4D]">{isCurrent?'En pista':isAbsent?'No se presentó':mark?'Resultado cargado':'Pendiente'}</span><div className="flex flex-wrap gap-3 mt-1"><button disabled={busy!==null||isCurrent||isAbsent} onClick={()=>void setTracking(row.position,'current')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">Marcar en pista</button>{!mark&&<button disabled={busy!==null} onClick={()=>void setTracking(row.position,isAbsent?'restore':'absent')} className="text-xs font-bold text-[#123E59] underline disabled:opacity-50 min-h-9">{isAbsent?'Volver a pendiente':'No se presentó'}</button>}</div>{isDouble&&qualifierBox(key,qualified,row.rider)}</div>
                 </div></td>
                 <td className="block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-24 min-w-0"><span aria-hidden="true" className="block text-xs font-bold text-neutral-700 mb-1 md:hidden">{jumpOff?'Recorrido · Faltas':isDouble?'Recorrido 1 · Faltas':twoPhases?'Fase 1 · Faltas':'Faltas'}</span><input aria-label={`Faltas ${twoPhases?'fase 1 ':''}de ${row.rider}`} className={input} inputMode="numeric" value={draft.faults} onChange={e=>change(row.position,'faults',e.target.value,mark)}/></td>

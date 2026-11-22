@@ -33,7 +33,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !auth.user) return reply({ error: 'Sesión inválida.' }, 401);
   const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
   let body; try { body = await req.json(); } catch { return reply({ error: 'Datos inválidos.' }, 400); }
-  if (body.action === 'combined_reorder' || body.action === 'manual_save' || body.action === 'manual_result_save' || body.action === 'manual_tracking' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
+  if (body.action === 'combined_reorder' || body.action === 'live_remove_entry' || body.action === 'live_edit_entry' || body.action === 'manual_save' || body.action === 'manual_result_save' || body.action === 'manual_tracking' || body.action === 'live_list' || body.action === 'live_start' || body.action === 'live_save' || body.action === 'live_tracking' || body.action === 'live_reorder') {
     if (auth.user.app_metadata?.equidate_external !== true || (auth.user.banned_until && new Date(auth.user.banned_until).getTime() > Date.now())) return reply({ error: 'Acceso denegado.' }, 403);
     if (typeof body.eventId !== 'string') return reply({ error: 'Concurso inválido.' }, 400);
     if(body.action==='manual_result_save') {
@@ -82,42 +82,79 @@ Deno.serve(async (req: Request) => {
     }
     const { data: assignment, error: assignmentError } = await service.from('external_event_assignments').select('event:events(id,name,end_date,discipline)').eq('user_id', auth.user.id).eq('event_id', body.eventId).maybeSingle();
     if (assignmentError || !assignment?.event || !isCurrent(assignment.event.end_date) || (assignment.event.discipline && assignment.event.discipline !== 'jumping')) return reply({ error: 'Concurso no autorizado.' }, 403);
-    if (body.action === 'manual_save') {
-      const {data: allowed} = await service.from('competition_classes').select('id').eq('event_id',body.eventId).eq('id',body.classId).maybeSingle();
-      if (!allowed) return reply({error:'Prueba no autorizada.'},403);
-      const row = body.row;
-      if (!row || typeof row.rider !== 'string' || typeof row.horse !== 'string') return reply({error:'Binomio inválido.'},400);
-      const values: Record<string, unknown> = {rider:row.rider.trim(),horse:row.horse.trim(),category:row.category || ''};
-      for (const field of ['position','entry_label','obstacle_faults','time_seconds','phase2_faults','phase2_seconds']) {
-        if (Object.prototype.hasOwnProperty.call(row, field)) values[field] = row[field];
+    if (body.action === 'live_remove_entry') {
+      if (typeof body.classId !== 'string' ||
+          (body.startVersionId != null && typeof body.startVersionId !== 'string') ||
+          (body.manualId != null && typeof body.manualId !== 'string') ||
+          (body.position != null && !Number.isSafeInteger(body.position)) ||
+          ((body.manualId == null) === (body.position == null))) {
+        return reply({ error: 'Binomio inválido.' }, 400);
       }
-      const result = body.edit ? await service.from('manual_live_entries').update(values).eq('class_id',allowed.id).eq('id',row.id).select('id').single()
-        : await service.from('manual_live_entries').insert({...values,id:row.id,class_id:allowed.id});
-      return result.error ? reply({error:'Revisá los datos del binomio.'},400) : reply({success:true});
+      const { error } = await service.rpc('equidate_remove_live_entry', {
+        actor: auth.user.id, target_event: body.eventId, target_class: body.classId,
+        start_version: body.startVersionId ?? null, target_position: body.position ?? null,
+        target_manual: body.manualId ?? null,
+      });
+      return error ? reply({ error: 'No se pudo quitar el binomio.' }, 400) : reply({ success: true });
+    }
+
+    if (body.action === 'live_edit_entry' || body.action === 'manual_save') {
+      const row = body.row;
+      if (typeof body.classId !== 'string' || !row ||
+          ![row.rider, row.horse, row.category].every(value =>
+            typeof value === 'string' && value.trim().length >= 1 && value.trim().length <= 160)) {
+        return reply({ error: 'Completá jinete, caballo y categoría.' }, 400);
+      }
+      const names = { rider: row.rider.trim(), horse: row.horse.trim(), category: row.category.trim() };
+      if (body.action === 'live_edit_entry') {
+        const { error } = await service.rpc('equidate_edit_live_entry', {
+          actor: auth.user.id, target_event: body.eventId, target_class: body.classId,
+          start_version: body.startVersionId ?? null, target_position: body.position ?? null,
+          target_manual: body.manualId ?? null, rider_name: names.rider,
+          horse_name: names.horse, category_name: names.category,
+        });
+        return error ? reply({ error: 'No se pudo editar el binomio.' }, 400) : reply({ success: true });
+      }
+
+      if (body.edit || typeof row.id !== 'string' ||
+          (row.entry_label != null && (typeof row.entry_label !== 'string' ||
+            !/^(?:[A-Z]|[1-9][0-9]{0,15}(?: bis)?)$/.test(row.entry_label)))) {
+        return reply({ error: 'Binomio inválido.' }, 400);
+      }
+      const { data: allowed } = await service.from('competition_classes').select('id')
+        .eq('event_id', body.eventId).eq('id', body.classId).maybeSingle();
+      if (!allowed) return reply({ error: 'Prueba no autorizada.' }, 403);
+      const { data: live } = await service.from('live_start_snapshots').select('class_id')
+        .eq('class_id', allowed.id).maybeSingle();
+      if (!live) return reply({ error: 'La carga del vivo todavía no comenzó.' }, 409);
+
+      const { error } = await service.from('manual_live_entries').insert({
+        ...names, id: row.id, class_id: allowed.id, entry_label: row.entry_label ?? null,
+      });
+      return error ? reply({ error: 'No se pudo agregar el binomio.' }, 400) : reply({ success: true });
     }
     const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);
     const ids = (classes || []).map((c: {id:string}) => c.id);
     if (!ids.length) return reply({ classes: [] });
-    const { data: heads, error: headsError } = await service.from('start_lists').select('class_id,version_id').in('class_id', ids).not('version_id','is',null);
-    if (headsError) return reply({ error: 'No se pudieron consultar los listados.' }, 500);
-    const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
+    const { data: snapshots, error: snapshotsError } = await service
+      .from('live_start_snapshots').select('class_id,version_id,entries').in('class_id', ids);
+    if (snapshotsError) return reply({ error: 'No se pudo consultar la lista del vivo.' }, 500);
+    const versionIds = (snapshots ?? []).flatMap(row => row.version_id ? [row.version_id] : []);
     const manual = await service.from('manual_live_entries').select('*').in('class_id',ids).order('created_at');
     if (manual.error) return reply({error:'No se pudieron leer los binomios.'},500);
-    const [versions, marks, tracking, combined, starts, manualOrder, manualTracking] = await Promise.all([
-      service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
+    const [marks, tracking, combined, manualOrder, manualTracking] = await Promise.all([
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows,live_order').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_combined_order').select('class_id,start_version_id,entries,revision').in('class_id',ids).in('start_version_id',versionIds),
-      service.from('live_result_starts').select('class_id').in('class_id',ids),
       service.from('live_manual_only_order').select('class_id,entries,revision').in('class_id',ids),
       service.from('manual_live_tracking').select('class_id,current_manual_id,no_shows').in('class_id',ids),
     ]);
-    if (versions.error || marks.error || tracking.error || combined.error || starts.error || manualOrder.error || manualTracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
+    if (marks.error || tracking.error || combined.error || manualOrder.error || manualTracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
-      const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
-      const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return [{ ...c, manualTracking:(manualTracking.data||[]).find((t:{class_id:string})=>t.class_id===c.id)||null, started: (starts.data || []).some((s: {class_id:string})=>s.class_id===c.id), combined: version ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === version.id) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
+      const snapshot = (snapshots ?? []).find(row => row.class_id === c.id);
+      const versionId = snapshot?.version_id;
+      return [{ ...c, manualTracking:(manualTracking.data||[]).find((t:{class_id:string})=>t.class_id===c.id)||null, started: !!snapshot, combined: versionId ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === versionId) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: versionId ?? '', entries: snapshot?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === versionId) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === versionId) }];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

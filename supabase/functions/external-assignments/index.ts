@@ -99,25 +99,24 @@ Deno.serve(async (req: Request) => {
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);
     const ids = (classes || []).map((c: {id:string}) => c.id);
     if (!ids.length) return reply({ classes: [] });
-    const { data: heads, error: headsError } = await service.from('start_lists').select('class_id,version_id').in('class_id', ids).not('version_id','is',null);
-    if (headsError) return reply({ error: 'No se pudieron consultar los listados.' }, 500);
-    const versionIds = (heads || []).map((h: {version_id:string}) => h.version_id);
+    const { data: snapshots, error: snapshotsError } = await service
+      .from('live_start_snapshots').select('class_id,version_id,entries').in('class_id', ids);
+    if (snapshotsError) return reply({ error: 'No se pudo consultar la lista del vivo.' }, 500);
+    const versionIds = (snapshots ?? []).flatMap(row => row.version_id ? [row.version_id] : []);
     const manual = await service.from('manual_live_entries').select('*').in('class_id',ids).order('created_at');
     if (manual.error) return reply({error:'No se pudieron leer los binomios.'},500);
-    const [versions, marks, tracking, combined, starts, manualOrder, manualTracking] = await Promise.all([
-      service.from('start_list_versions').select('id,class_id,entries').in('id', versionIds),
+    const [marks, tracking, combined, manualOrder, manualTracking] = await Promise.all([
       service.from('provisional_live_results').select('class_id,start_version_id,position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_tracking').select('class_id,start_version_id,current_position,no_shows,live_order').in('class_id', ids).in('start_version_id', versionIds),
       service.from('live_combined_order').select('class_id,start_version_id,entries,revision').in('class_id',ids).in('start_version_id',versionIds),
-      service.from('live_result_starts').select('class_id').in('class_id',ids),
       service.from('live_manual_only_order').select('class_id,entries,revision').in('class_id',ids),
       service.from('manual_live_tracking').select('class_id,current_manual_id,no_shows').in('class_id',ids),
     ]);
-    if (versions.error || marks.error || tracking.error || combined.error || starts.error || manualOrder.error || manualTracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
+    if (marks.error || tracking.error || combined.error || manualOrder.error || manualTracking.error) return reply({ error: 'No se pudieron consultar las marcas.' }, 500);
     return reply({ classes: (classes || []).flatMap((c: {id:string}) => {
-      const head = (heads || []).find((h: {class_id:string}) => h.class_id === c.id);
-      const version = (versions.data || []).find((v: {id:string,class_id:string}) => v.id === head?.version_id && v.class_id === c.id);
-      return [{ ...c, manualTracking:(manualTracking.data||[]).find((t:{class_id:string})=>t.class_id===c.id)||null, started: (starts.data || []).some((s: {class_id:string})=>s.class_id===c.id), combined: version ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === version.id) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: version?.id ?? '', entries: version?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === version?.id) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === version?.id) }];
+      const snapshot = (snapshots ?? []).find(row => row.class_id === c.id);
+      const versionId = snapshot?.version_id;
+      return [{ ...c, manualTracking:(manualTracking.data||[]).find((t:{class_id:string})=>t.class_id===c.id)||null, started: !!snapshot, combined: versionId ? (combined.data || []).find((o: {class_id:string,start_version_id:string}) => o.class_id === c.id && o.start_version_id === versionId) || null : (manualOrder.data || []).find((o: {class_id:string})=>o.class_id===c.id) || null, manual: manual.data.filter(row=>row.class_id===c.id), versionId: versionId ?? '', entries: snapshot?.entries ?? [], tracking: (tracking.data || []).find((t: {class_id:string,start_version_id:string}) => t.class_id === c.id && t.start_version_id === versionId) || null, marks: (marks.data || []).filter((m: {class_id:string,start_version_id:string}) => m.class_id === c.id && m.start_version_id === versionId) }];
     }) });
   }
   if (body.action === 'streams_list' || body.action === 'streams_save') {

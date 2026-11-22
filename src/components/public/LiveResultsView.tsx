@@ -3,18 +3,20 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useEquestrian } from '../../context/EquestrianContext';
-import { publishedStartList } from '../../utils/startLists';
+import type { StartEntry } from '../../utils/startLists';
 import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
 import { combinedLiveKeys, orderLiveEntries } from '../../utils/liveOrder';
 type Mark = { position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null; start_version_id:string };
 export const LiveResultsView: React.FC<{classId:string;embedded?:boolean;onBack?:()=>void}> = ({classId,embedded=false,onBack}) => {
-  const {classes,startHeads,startVersions,setSelectedEventId}=useEquestrian();
+  const {classes,setSelectedEventId}=useEquestrian();
   const entry=classes.find(c=>c.id===classId);
-  const list=publishedStartList(classId,startHeads,startVersions);
+  const [snapshot,setSnapshot]=useState<{classId:string; id:string|null; entries:StartEntry[]}|null>(null);
+  const list=snapshot?.classId===classId?snapshot:null;
   const [tracking,setTracking]=useState<{start_version_id:string;current_position:number|null;no_shows:number[];live_order:number[]|null}|null>(null);
   const [manual,setManual]=useState<ManualEntry[]>([]);
   const [manualTracking,setManualTracking]=useState<{current_manual_id:string|null;no_shows:string[]}|null>(null);
-  const [isShared,setIsShared]=useState<boolean|null>(null);
+  const [visibility,setVisibility]=useState<{classId:string; shared:boolean}|null>(null);
+  const isShared=visibility?.classId===classId?visibility.shared:null;
   const [combined,setCombined]=useState<string[]|null>(null);
   const [roundQualifiers,setRoundQualifiers]=useState<string[]>([]);
   const [marks,setMarks]=useState<Mark[]>([]), [error,setError]=useState(''), [loading,setLoading]=useState(true);
@@ -22,9 +24,23 @@ export const LiveResultsView: React.FC<{classId:string;embedded?:boolean;onBack?
     let active=true;
     const refresh=async()=>{const [result,state,extra]=await Promise.all([supabase.from('provisional_live_results').select('position,obstacle_faults,time_seconds,phase2_faults,phase2_seconds,start_version_id').eq('class_id',classId),supabase.from('live_tracking').select('start_version_id,current_position,no_shows,live_order').eq('class_id',classId).eq('start_version_id',list?.id??'00000000-0000-0000-0000-000000000000').maybeSingle(),supabase.from('manual_live_entries').select('*').eq('class_id',classId).order('created_at')]);const {data,error}=result;if(!active)return;if(error||state.error||extra.error)setError('No se pudieron cargar las marcas provisorias.');else {setError('');setManual(extra.data??[]);setMarks(data||[]);setTracking(state.data);}setLoading(false);};
     const refreshOrder=async()=>{const [result,state,rounds]=await Promise.all([list?.id ? supabase.from('live_combined_order').select('entries').eq('class_id',classId).eq('start_version_id',list.id).maybeSingle() : supabase.from('live_manual_only_order').select('entries').eq('class_id',classId).maybeSingle(),supabase.from('manual_live_tracking').select('current_manual_id,no_shows').eq('class_id',classId).maybeSingle(),supabase.from('live_second_round_qualifiers').select('entry_key').eq('class_id',classId)]);if(active && !result.error)setCombined(result.data?.entries??null);if(active && !state.error)setManualTracking(state.data);if(active && !rounds.error)setRoundQualifiers((rounds.data??[]).map(q=>q.entry_key));};
-    const refreshVisibility=async()=>{const {data,error}=await supabase.from('live_result_starts').select('public_visible').eq('class_id',classId).maybeSingle();if(active)setIsShared(!error && data?.public_visible===true);};
-    setIsShared(null);void refreshVisibility();void refresh();void refreshOrder();const timer=window.setInterval(()=>{void refreshVisibility();void refresh();void refreshOrder();},15000);return()=>{active=false;window.clearInterval(timer);};
-  },[classId,list?.id]);
+    const refreshLive=async()=>{
+      const {data,error}=await supabase.from('live_start_snapshots').select('version_id,entries').eq('class_id',classId).maybeSingle();
+      if(!active)return;
+      if(error||!data){
+        setVisibility({classId,shared:false});
+        setSnapshot(current=>current?.classId===classId?null:current);
+      }else if(!list){
+        setSnapshot({classId,id:data.version_id,entries:data.entries});
+      }else{
+        await Promise.all([refresh(),refreshOrder()]);
+        if(active)setVisibility({classId,shared:true});
+      }
+    };
+    void refreshLive();
+    const timer=window.setInterval(()=>void refreshLive(),15000);
+    return()=>{active=false;window.clearInterval(timer);};
+  },[classId,list?.classId,list?.id]);
   const resolved=resolveManual(manual,list?.entries??[]);
   const jumpOff=isJumpOff(entry?.liveFormat,entry?.name,entry?.description);
   const isDouble=isDoubleRound(entry?.liveFormat,entry?.name,entry?.description)||jumpOff;

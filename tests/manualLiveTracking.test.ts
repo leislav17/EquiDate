@@ -61,7 +61,7 @@ test('manual and published entries share tracking, marks and automatic advance',
   await db.query("insert into start_list_versions values($1,$2,'[{\"position\":7,\"category\":\"B\"}]')",[replacement,c]);
   await db.query('update start_lists set version_id=$2 where class_id=$1',[c,replacement]);
   await db.query('select equidate_start_live_results($1,$2,$3)',[u,e,c]);
-  const snapshot=await db.query('select version_id, entries from live_start_snapshots where class_id=$1',[c]);
+  const snapshot=await db.query<{version_id:string; entries:unknown[]}>('select version_id, entries from live_start_snapshots where class_id=$1',[c]);
   assert.deepEqual(snapshot.rows,[{version_id:v,entries:[{position:1,category:'A'},{position:2,category:'A'}]}]);
   await db.query('select equidate_set_combined_live_order($1,$2,$3,$4,2,$5)',[u,e,c,v,['p:2','p:1',`m:${m2}`,`m:${m}`]]);
   await db.query('select equidate_set_second_round_qualification($1,$2,$3,$4,1,null,true)',[u,e,c,v]);
@@ -76,8 +76,8 @@ test('manual and published entries share tracking, marks and automatic advance',
   await edit(1,null);
   await db.query('select equidate_set_second_round_qualification($1,$2,$3,null,null,$4,true)',[u,e,c,m]);
   await edit(null,m);
-  assert.equal((await db.query("select entries->0->>'rider' as rider from live_start_snapshots where class_id=$1",[c])).rows[0].rider,'Ana Pérez');
-  assert.deepEqual((await db.query("select entries from start_list_versions where id=$1",[v])).rows[0].entries,snapshot.rows[0].entries);
+  assert.equal((await db.query<{rider:string}>("select entries->0->>'rider' as rider from live_start_snapshots where class_id=$1",[c])).rows[0].rider,'Ana Pérez');
+  assert.deepEqual((await db.query<{entries:unknown[]}>("select entries from start_list_versions where id=$1",[v])).rows[0].entries,snapshot.rows[0].entries);
   assert.deepEqual((await db.query('select obstacle_faults,time_seconds,phase2_faults,phase2_seconds from provisional_live_results')).rows,
     [{obstacle_faults:0,time_seconds:'42.00',phase2_faults:4,phase2_seconds:'31.50'}]);
   assert.deepEqual((await db.query('select rider, horse, category, obstacle_faults, time_seconds from manual_live_entries where id=$1',[m])).rows,
@@ -99,6 +99,34 @@ test('manual and published entries share tracking, marks and automatic advance',
   await db.query("insert into competition_classes values($1,$2,'Doble recorrido',null)",[empty,e]);
   await db.query('select equidate_start_live_results($1,$2,$3)',[u,e,empty]);
   assert.deepEqual((await db.query('select version_id,entries from live_start_snapshots where class_id=$1',[empty])).rows,[{version_id:null,entries:[]}]);
+  await db.exec(readFileSync('supabase/migrations/20261122150000_remove_live_entry.sql','utf8'));
+  await db.query('update live_result_starts set public_visible=true where class_id=$1',[c]);
+  const remove=(position:number|null, manualId:string|null, cls=c, version:string|null=v)=>
+    db.query('select equidate_remove_live_entry($1,$2,$3,$4,$5,$6)',[u,e,cls,version,position,manualId]);
+  await db.exec('set role anon');
+  await assert.rejects(remove(1,null));
+  await db.exec('reset role');
+  await db.query("select equidate_published_tracking_action($1,$2,$3,$4,1,'current')",[u,e,c,v]);
+  await remove(1,null);
+  assert.deepEqual((await db.query('select current_position,live_order from live_tracking')).rows,[{current_position:null,live_order:[2]}]);
+  await db.query("select equidate_manual_tracking_action($1,$2,$3,$4,'current')",[u,e,c,m]);
+  await remove(null,m);
+  assert.deepEqual((await db.query('select current_manual_id,no_shows from manual_live_tracking')).rows,[{current_manual_id:null,no_shows:[]}]);
+  assert.deepEqual((await db.query('select entries,revision from live_combined_order')).rows,[{entries:['p:2',`m:${m2}`],revision:5}]);
+  await db.exec('set role anon');
+  assert.deepEqual((await db.query('select entries from live_start_snapshots where class_id=$1',[c])).rows,[{entries:[{position:2,category:'A'}]}]);
+  assert.equal((await db.query('select * from provisional_live_results')).rows.length,0);
+  assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,0);
+  assert.deepEqual((await db.query('select id from manual_live_entries')).rows,[{id:m2}]);
+  await db.exec('reset role');
+  await assert.rejects(db.query('select equidate_save_published_combined($1,$2,$3,$4,1,0,42,null,null)',[u,e,c,v]));
+  await assert.rejects(db.query('select equidate_set_combined_live_order($1,$2,$3,$4,3,$5)',[u,e,c,v,['p:2',`m:${m2}`]]));
+  await db.query('select equidate_set_combined_live_order($1,$2,$3,$4,5,$5)',[u,e,c,v,[`m:${m2}`,'p:2']]);
+  assert.deepEqual((await db.query<{entries:unknown[]}>('select entries from start_list_versions where id=$1',[v])).rows[0].entries,snapshot.rows[0].entries);
+  await db.query("insert into manual_live_entries(id,class_id,rider,horse,category) values($1,$2,'E','F','B')",[m,empty]);
+  await db.query('select equidate_set_manual_only_order($1,$2,$3,0,$4)',[u,e,empty,[`m:${m}`]]);
+  await remove(null,m,empty,null);
+  assert.deepEqual((await db.query('select entries,revision from live_manual_only_order where class_id=$1',[empty])).rows,[{entries:[],revision:2}]);
   await db.close();
 });
 

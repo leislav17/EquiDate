@@ -67,10 +67,29 @@ test('manual and published entries share tracking, marks and automatic advance',
   await db.query('select equidate_set_second_round_qualification($1,$2,$3,$4,1,null,true)',[u,e,c,v]);
   await db.query('select equidate_save_published_combined($1,$2,$3,$4,1,0,42,4,31.5)',[u,e,c,v]);
   await assert.rejects(db.query('select equidate_save_published_combined($1,$2,$3,$4,7,0,42,null,null)',[u,e,c,replacement]));
+  await db.exec(readFileSync('supabase/migrations/20261122140000_edit_live_entry.sql','utf8'));
+  const edit=(position:number|null, manualId:string|null, version=v)=>
+    db.query('select equidate_edit_live_entry($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [u,e,c,version,position,manualId,'Ana Pérez','Nuevo caballo','B']);
+  await assert.rejects(edit(1,null,replacement));
+  await assert.rejects(edit(7,null));
+  await edit(1,null);
+  await db.query('select equidate_set_second_round_qualification($1,$2,$3,null,null,$4,true)',[u,e,c,m]);
+  await edit(null,m);
+  assert.equal((await db.query("select entries->0->>'rider' as rider from live_start_snapshots where class_id=$1",[c])).rows[0].rider,'Ana Pérez');
+  assert.deepEqual((await db.query("select entries from start_list_versions where id=$1",[v])).rows[0].entries,snapshot.rows[0].entries);
+  assert.deepEqual((await db.query('select obstacle_faults,time_seconds,phase2_faults,phase2_seconds from provisional_live_results')).rows,
+    [{obstacle_faults:0,time_seconds:'42.00',phase2_faults:4,phase2_seconds:'31.50'}]);
+  assert.deepEqual((await db.query('select rider, horse, category, obstacle_faults, time_seconds from manual_live_entries where id=$1',[m])).rows,
+    [{rider:'Ana Pérez',horse:'Nuevo caballo',category:'B',obstacle_faults:4,time_seconds:'55.00'}]);
+  await db.query('delete from external_event_assignments where user_id=$1',[u]);
+  await assert.rejects(edit(1,null));
+  await db.query('insert into external_event_assignments values($1,$2)',[u,e]);
   await db.exec('set role anon');
   assert.equal((await db.query('select * from live_start_snapshots')).rows.length,1);
   assert.equal((await db.query('select * from provisional_live_results')).rows.length,1);
-  assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,1);
+  assert.equal((await db.query('select * from live_second_round_qualifiers')).rows.length,2);
+  await assert.rejects(edit(1,null));
   await db.exec('reset role');
   await db.query('update live_result_starts set public_visible=false where class_id=$1',[c]);
   await db.exec('set role anon');

@@ -2,7 +2,7 @@ import {ManualLiveRow} from './ManualLiveRow';
 import {ManualEntryForm, type LiveEntryEdit} from './ManualEntryForm';
 import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, GripVertical, Pencil, Play, Plus } from 'lucide-react';
+import { ArrowLeft, GripVertical, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
 import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
@@ -30,6 +30,37 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   };
   useEffect(()=>{void load();},[eventId]);
   const chosen=classes.find(c=>c.id===classId);
+  const removeEntry=async(row:LiveEntryEdit)=>{
+    if(!chosen || busy!==null || !window.confirm(`¿Quitar a ${row.rider} y ${row.horse} del vivo? Se borrarán sus marcas provisorias.`))return;
+    setBusy(-1);
+    setError('');
+    setMessage('');
+    try {
+      const manual='id' in row;
+      const {data,error}=await supabase.functions.invoke('external-assignments',{body:{
+        action:'live_remove_entry',eventId,classId:chosen.id,startVersionId:chosen.versionId||null,
+        manualId:manual?row.id:null,position:manual?null:row.position,
+      }});
+      if(error||!data?.success)throw new Error();
+      setEditing(null);
+      if(!manual)setDrafts(current=>{
+        const next={...current};
+        delete next[row.position];
+        return next;
+      });
+      await load();
+      setMessage('Binomio quitado del vivo.');
+    } catch {
+      setError('No se pudo quitar el binomio. Intentá nuevamente.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const removeButton=(row:LiveEntryEdit)=><button type="button" disabled={busy!==null}
+    onClick={()=>void removeEntry(row)} aria-label={`Quitar binomio de ${row.rider}`} title="Quitar binomio del vivo"
+    className="min-h-11 min-w-11 inline-flex items-center justify-center text-[#A61E4D] disabled:opacity-50">
+    <Trash2 size={17}/>
+  </button>;
   const [starting,setStarting]=useState(false);
   const [visibilityBusy,setVisibilityBusy]=useState(false);
   const toggleVisibility=async()=>{
@@ -146,7 +177,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               <tr><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th>{twoPhases&&<><th scope="col" className="px-3 pb-2 border-l border-white/20">Faltas</th><th scope="col" className="px-3 pb-2">Tiempo (seg.)</th></>}</tr>
             </thead>
             <tbody className="block divide-y divide-neutral-200 md:table-row-group md:divide-y-0">{ordered.map((key,index)=>{
-              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);const qualified=chosen.roundQualifiers.includes(key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} doubleRound={isDouble} jumpOff={jumpOff} secondEnabled={!isDouble||qualified} qualifierControl={isDouble?qualifierBox(key,qualified,row.rider):null} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onEdit={()=>setEditing(row)} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
+              if(key.startsWith('m:')) {const row=(chosen.manual??[]).find(m=>`m:${m.id}`===key);const qualified=chosen.roundQualifiers.includes(key);return row ? <ManualLiveRow key={key} row={row} eventId={eventId} classId={chosen.id} versionId={chosen.versionId} twoPhases={twoPhases} doubleRound={isDouble} jumpOff={jumpOff} secondEnabled={!isDouble||qualified} qualifierControl={isDouble?qualifierBox(key,qualified,row.rider):null} dragHandle={dragButton(key,row.rider,index)} dragging={dragging===key} current={chosen.manualTracking?.current_manual_id===row.id} absent={chosen.manualTracking?.no_shows?.includes(row.id)??false} disabled={busy!==null} onEdit={()=>setEditing(row)} removeControl={removeButton(row)} onTracking={action=>void setManualTracking(row.id,action)} onSaved={()=>{void load();setMessage('Marca guardada como provisoria.');}} /> : null;}
               const row=chosen.entries.find(item=>`p:${item.position}`===key); if(!row)return null;
               const mark=chosen.marks.find(m=>m.position===row.position);
               const draft=drafts[row.position]||{faults:mark?.obstacle_faults?.toString()||'0',seconds:mark?.time_seconds?.toString()||'',secondFaults:mark?.phase2_faults?.toString() ?? '',secondSeconds:mark?.phase2_seconds?.toString() ?? ''};
@@ -156,6 +187,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
               return <tr key={key} data-live-key={key} className={'grid grid-cols-2 gap-x-2.5 gap-y-2.5 p-3 md:table-row md:p-0 transition-colors '+(isCurrent?'bg-rose-50 ':'bg-white ')+(dragging===key?'opacity-60 outline-2 outline-[#A61E4D]':'')}>
                 <td className="col-span-2 block p-0 md:table-cell md:p-2 md:border-t md:border-neutral-200 md:min-w-72 min-w-0"><div className="flex items-start gap-1">
                   {dragButton(key,row.rider,index)}
+                  {removeButton(row)}
                   <button type="button" disabled={busy!==null} onClick={()=>setEditing(row)}
                     aria-label={`Editar binomio de ${row.rider}`} title="Editar binomio"
                     className="min-h-11 min-w-11 inline-flex items-center justify-center text-[#123E59] disabled:opacity-50">

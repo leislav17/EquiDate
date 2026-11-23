@@ -23,6 +23,7 @@ import { TransmissionButton } from './Transmission';
 import { DocumentItem } from '../../types/equestrian';
 import { useCompetitionDisclosure } from '../../hooks/useNavigationSession';
 import { renderRichText } from '../../utils/richText';
+import { SponsorSection } from './SponsorSection';
 
 export const CompetitionDetail: React.FC = () => {
   const {
@@ -333,6 +334,12 @@ export const CompetitionDetail: React.FC = () => {
             );
           })}
         </div>
+
+        <SponsorSection
+          slot="event_detail"
+          eventId={event.id}
+          hideGlobalSponsors={event.hideGlobalSponsors}
+        />
       </div>
     </div>
   );

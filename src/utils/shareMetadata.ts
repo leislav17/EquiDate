@@ -32,6 +32,8 @@ export function resolveStaticShareTitle(location: RouteLocation): string | null 
       return 'EquiDate | Buscar jinetes';
     case '/informacion-util':
       return 'EquiDate | Información útil';
+    case '/sponsors':
+      return 'EquiDate | Sponsors';
     case '/jumping':
       return 'EquiDate | Salto';
     case '/dressage':

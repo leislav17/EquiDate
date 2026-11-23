@@ -27,6 +27,7 @@ test('Static and discipline routes resolve to exact og:title strings without bra
   assert.equal(resolveShareTitle(loc('/training'), events), 'EquiDate | Pasadas');
   assert.equal(resolveShareTitle(loc('/buscar/jinetes'), events), 'EquiDate | Buscar jinetes');
   assert.equal(resolveShareTitle(loc('/informacion-util'), events), 'EquiDate | Información útil');
+  assert.equal(resolveShareTitle(loc('/sponsors'), events), 'EquiDate | Sponsors');
   assert.equal(resolveShareTitle(loc('/admin'), events), 'EquiDate | Admin');
   assert.equal(resolveShareTitle(loc('/admin/concursos'), events), 'EquiDate | Admin');
   assert.equal(resolveShareTitle(loc('/admin/jinetes'), events), 'EquiDate | Admin');

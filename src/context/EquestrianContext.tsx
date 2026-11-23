@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass, CompetitionArena, CompetitionStream } from '../types/equestrian';
+import { EquestrianEvent, DocumentItem, DocumentPage, EventStatus, CompetitionDay, CompetitionClass, CompetitionArena, CompetitionStream, SponsorItem, SponsorCategory } from '../types/equestrian';
 import { supabase, isSupabaseConfigured, BUCKET_NAME, getStorageFileUrl } from '../lib/supabase';
 import { sessionDataScope } from '../utils/navigationSession';
 import { Session } from '@supabase/supabase-js';
@@ -10,6 +10,7 @@ import { StartHead, StartVersion, StartImport, reviewStartImport } from '../util
 import { ResultVersion, ResultImport, reviewResultImport } from '../utils/results';
 import { eventDiscipline } from '../utils/disciplines';
 import { eventPath, eventReference, isAdminRoute, navigate, navigateHash, readLocation, resolveEvent, resourceHash, resourceSuffix, subscribeNavigation } from '../utils/navigation';
+import { normalizeSponsorCategoryName, safeSponsorUrl, sortSponsorCategories } from '../utils/sponsors';
 
 export interface DocumentPageInput {
   file?: File | Blob;
@@ -98,6 +99,20 @@ interface EquestrianContextType {
   deleteDocument: (id: string) => Promise<{ success: boolean; storageError?: string }>;
   reorderDocument: (id: string, direction: 'up' | 'down') => Promise<void>;
 
+  // Sponsor actions
+  sponsors: SponsorItem[];
+  sponsorsAvailable: boolean;
+  sponsorsError: string | null;
+  sponsorCategories: SponsorCategory[];
+  sponsorCategoriesAvailable: boolean;
+  sponsorCategoriesError: string | null;
+  saveSponsor: (entry: Omit<SponsorItem, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<void>;
+  deleteSponsor: (id: string) => Promise<void>;
+  toggleSponsorActive: (id: string) => Promise<void>;
+  uploadSponsorImage: (file: File) => Promise<string>;
+  saveSponsorCategory: (entry: { id?: string; name: string; sortOrder?: number }) => Promise<SponsorCategory>;
+  deleteSponsorCategory: (id: string) => Promise<void>;
+
   // Query helpers
   getDocumentsForEvent: (eventId: string) => DocumentItem[];
   getEventById: (id: string) => EquestrianEvent | undefined;
@@ -122,6 +137,12 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [arenaError, setArenaError] = useState<string | null>(null);
   const [days, setDays] = useState<CompetitionDay[]>([]);
   const [classes, setClasses] = useState<CompetitionClass[]>([]);
+  const [sponsors, setSponsors] = useState<SponsorItem[]>([]);
+  const [sponsorsAvailable, setSponsorsAvailable] = useState(true);
+  const [sponsorsError, setSponsorsError] = useState<string | null>(null);
+  const [sponsorCategories, setSponsorCategories] = useState<SponsorCategory[]>([]);
+  const [sponsorCategoriesAvailable, setSponsorCategoriesAvailable] = useState(true);
+  const [sponsorCategoriesError, setSponsorCategoriesError] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [activeYear, setActiveYear] = useState(() => getArgentinaDate().year);
@@ -283,7 +304,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         requestVersion.current += 1;
         hasLoadedData.current = false;
         setIsLoading(true); setRefreshError(null);
-        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
+        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]); setSponsors([]); setSponsorCategories([]);
         setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
         setAuthRevision(version => version + 1);
       }
@@ -328,6 +349,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           endDate: e.end_date,
           status: e.status as EventStatus,
           importantInfo: e.important_info || '',
+          hideGlobalSponsors: Boolean(e.hide_global_sponsors),
           createdAt: e.created_at,
           updatedAt: e.updated_at,
         }));
@@ -476,13 +498,82 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           arenaId: stream.arena_id, youtubeUrl: stream.youtube_url || '',
         })));
       }
+      const [sponsorResponse, categoryResponse] = await Promise.all([
+        supabase.from('sponsors').select('*').order('sort_order').order('id'),
+        supabase.from('sponsor_categories').select('*').order('sort_order').order('name').order('id'),
+      ]);
+      if (version !== requestVersion.current) return;
+      if (sponsorResponse.error) {
+        const missingTable =
+          sponsorResponse.error.code === '42P01' ||
+          sponsorResponse.error.code === 'PGRST205' ||
+          sponsorResponse.error.message?.includes('sponsors');
+        if (missingTable) {
+          setSponsorsAvailable(false);
+          setSponsors([]);
+          setSponsorsError(null);
+        } else {
+          setSponsorsAvailable(true);
+          setSponsorsError('No pudimos cargar los sponsors. ' + sponsorResponse.error.message);
+        }
+      } else {
+        setSponsorsAvailable(true);
+        setSponsorsError(null);
+        setSponsors((sponsorResponse.data || []).map(row => ({
+          id: String(row.id),
+          name: row.name,
+          subtitle: row.subtitle || undefined,
+          imageUrl: row.image_url,
+          mobileImageUrl: row.mobile_image_url || undefined,
+          targetUrl: row.target_url || undefined,
+          categoryId: row.category_id ? String(row.category_id) : null,
+          scope: row.scope,
+          eventId: row.event_id ? String(row.event_id) : null,
+          placement: row.placement,
+          variant: row.variant || 'logo_card',
+          sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
+          active: Boolean(row.active),
+          startsAt: row.starts_at || null,
+          endsAt: row.ends_at || null,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        })));
+      }
+      if (categoryResponse.error) {
+        const missingTable =
+          categoryResponse.error.code === '42P01' ||
+          categoryResponse.error.code === 'PGRST205' ||
+          categoryResponse.error.message?.includes('sponsor_categories');
+        if (missingTable) {
+          setSponsorCategoriesAvailable(false);
+          setSponsorCategories([]);
+          setSponsorCategoriesError(null);
+        } else {
+          setSponsorCategoriesAvailable(true);
+          setSponsorCategoriesError('No pudimos cargar las categorías de sponsors. ' + categoryResponse.error.message);
+        }
+      } else {
+        setSponsorCategoriesAvailable(true);
+        setSponsorCategoriesError(null);
+        setSponsorCategories(
+          sortSponsorCategories(
+            (categoryResponse.data || []).map(row => ({
+              id: String(row.id),
+              name: row.name,
+              sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            }))
+          )
+        );
+      }
       hasLoadedData.current = true;
     } catch (error) {
       if (version !== requestVersion.current) return;
       if (hasLoadedData.current) {
         setRefreshError('No pudimos actualizar los concursos. Se mantiene la información cargada. ' + errorMessage(error));
       } else {
-        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]);
+        setEvents([]); setDocuments([]); setDays([]); setClasses([]); setArenas([]); setStreams([]); setSponsors([]); setSponsorCategories([]);
         setDataError('No pudimos cargar los concursos. ' + errorMessage(error));
         setStartHeads([]); setStartVersions([]); setResultHeads([]); setResultVersions([]);
       }
@@ -532,16 +623,24 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const val = entry.importantInfo;
       payload.important_info = val && typeof val === 'string' && val.trim().length > 0 ? val.trim() : null;
     }
+    if ('hideGlobalSponsors' in entry) {
+      payload.hide_global_sponsors = Boolean(entry.hideGlobalSponsors);
+    }
     if ('city' in entry || 'location' in entry) payload.location = entry.city ?? entry.location ?? '';
     return payload;
+  };
+  const stripMissingEventColumns = (payload: Record<string, unknown>, message = '') => {
+    const fallbackPayload = { ...payload };
+    if (message.includes('important_info') || !message) delete fallbackPayload.important_info;
+    if (message.includes('hide_global_sponsors') || !message) delete fallbackPayload.hide_global_sponsors;
+    return fallbackPayload;
   };
   const addEvent: EquestrianContextType['addEvent'] = async entry => {
     requireAdmin();
     const payload = eventPayload(entry);
     let { data, error } = await supabase.from('events').insert(payload).select('id').single();
-    if (error && (error.message?.includes('important_info') || error.code === '42703')) {
-      const fallbackPayload = { ...payload };
-      delete fallbackPayload.important_info;
+    if (error && (error.message?.includes('important_info') || error.message?.includes('hide_global_sponsors') || error.code === '42703')) {
+      const fallbackPayload = stripMissingEventColumns(payload, error.message);
       const res = await supabase.from('events').insert(fallbackPayload).select('id').single();
       data = res.data;
       error = res.error;
@@ -554,9 +653,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     requireAdmin();
     const payload = eventPayload(entry);
     let { error } = await supabase.from('events').update(payload).eq('id', id).select('id').single();
-    if (error && (error.message?.includes('important_info') || error.code === '42703')) {
-      const fallbackPayload = { ...payload };
-      delete fallbackPayload.important_info;
+    if (error && (error.message?.includes('important_info') || error.message?.includes('hide_global_sponsors') || error.code === '42703')) {
+      const fallbackPayload = stripMissingEventColumns(payload, error.message);
       const res = await supabase.from('events').update(fallbackPayload).eq('id', id).select('id').single();
       error = res.error;
     }
@@ -645,6 +743,159 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(path);
     return data.publicUrl;
+  };
+
+  const uploadSponsorImage = async (file: File): Promise<string> => {
+    requireAdmin();
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase no está configurado para subir archivos.');
+    }
+    if (file.size === 0) {
+      throw new Error('El archivo seleccionado está vacío.');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error('La imagen supera el tamaño máximo permitido de 5 MB.');
+    }
+
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+    const fileName = (file.name || '').toLowerCase();
+    const ext = fileName.split('.').pop() || '';
+
+    if (!allowedExts.includes(ext) || !allowedMimes.includes(file.type.toLowerCase())) {
+      throw new Error('Formato no permitido. Solo se aceptan imágenes JPG, JPEG, PNG y WebP.');
+    }
+
+    const uniqueId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const normalizedExt = ext === 'jpeg' ? 'jpg' : ext;
+    const path = `sponsor-images/${uniqueId}.${normalizedExt}`;
+
+    const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(path, file, {
+      contentType: file.type || 'image/jpeg',
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+    if (uploadError) {
+      throw new Error(`Error al subir la imagen a Storage: ${uploadError.message}`);
+    }
+
+    const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const saveSponsor: EquestrianContextType['saveSponsor'] = async entry => {
+    requireAdmin();
+    const name = entry.name.trim();
+    const subtitle = entry.subtitle?.trim() || null;
+    const imageUrl = entry.imageUrl.trim();
+    const mobileImageUrl = entry.mobileImageUrl?.trim() || null;
+    const targetUrl = entry.targetUrl?.trim() || null;
+    const startsAt = entry.startsAt?.trim() || null;
+    const endsAt = entry.endsAt?.trim() || null;
+
+    if (!name) throw new Error('Ingresá el nombre del sponsor.');
+    if (!safeSponsorUrl(imageUrl)) throw new Error('Ingresá o subí una imagen con URL http o https válida.');
+    if (mobileImageUrl && !safeSponsorUrl(mobileImageUrl)) throw new Error('La imagen para celular debe tener una URL http o https válida.');
+    if (targetUrl && !safeSponsorUrl(targetUrl)) throw new Error('El enlace de destino debe ser una URL http o https válida.');
+    if (startsAt && endsAt && startsAt > endsAt) throw new Error('La fecha de inicio de vigencia no puede ser posterior a la fecha de fin.');
+    if (entry.scope === 'event' && !entry.eventId) throw new Error('Falta asociar el concurso para este sponsor.');
+
+    const payload: Record<string, unknown> = {
+      name,
+      subtitle,
+      image_url: imageUrl,
+      mobile_image_url: mobileImageUrl,
+      target_url: targetUrl,
+      scope: entry.scope,
+      event_id: entry.scope === 'event' ? entry.eventId : null,
+      placement: entry.scope === 'event' ? 'event_detail' : entry.placement,
+      variant: entry.variant,
+      sort_order: Number.isFinite(entry.sortOrder) ? Math.trunc(entry.sortOrder) : 0,
+      active: Boolean(entry.active),
+      starts_at: startsAt,
+      ends_at: endsAt,
+    };
+
+    if (sponsorCategoriesAvailable) {
+      payload.category_id = entry.categoryId || null;
+    }
+
+    let { error } = entry.id
+      ? await supabase.from('sponsors').update(payload).eq('id', entry.id).select('id').single()
+      : await supabase.from('sponsors').insert(payload).select('id').single();
+
+    if (error && (error.code === '42703' || error.message?.includes('category_id'))) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.category_id;
+      const retry = entry.id
+        ? await supabase.from('sponsors').update(fallbackPayload).eq('id', entry.id).select('id').single()
+        : await supabase.from('sponsors').insert(fallbackPayload).select('id').single();
+      error = retry.error;
+    }
+
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const deleteSponsor: EquestrianContextType['deleteSponsor'] = async id => {
+    requireAdmin();
+    const { error } = await supabase.from('sponsors').delete().eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const toggleSponsorActive: EquestrianContextType['toggleSponsorActive'] = async id => {
+    requireAdmin();
+    const target = sponsors.find(s => s.id === id);
+    if (!target) return;
+    const { error } = await supabase.from('sponsors').update({ active: !target.active }).eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
+  };
+
+  const saveSponsorCategory: EquestrianContextType['saveSponsorCategory'] = async entry => {
+    requireAdmin();
+    const name = normalizeSponsorCategoryName(entry.name || '');
+    if (!name) throw new Error('Ingresá el nombre de la categoría.');
+    if (name.length > 80) throw new Error('El nombre de la categoría no puede superar los 80 caracteres.');
+
+    const duplicate = sponsorCategories.find(
+      c => c.id !== entry.id && normalizeSponsorCategoryName(c.name).toLowerCase() === name.toLowerCase()
+    );
+    if (duplicate) throw new Error('Ya existe una categoría con ese nombre.');
+
+    const nextOrder = Number.isFinite(entry.sortOrder)
+      ? Math.trunc(entry.sortOrder as number)
+      : (sponsorCategories.reduce((max, item) => Math.max(max, item.sortOrder), 0) + 10);
+
+    const payload = { name, sort_order: nextOrder };
+    const { data, error } = entry.id
+      ? await supabase.from('sponsor_categories').update(payload).eq('id', entry.id).select('*').single()
+      : await supabase.from('sponsor_categories').insert(payload).select('*').single();
+
+    if (error) {
+      if (error.code === '23505') throw new Error('Ya existe una categoría con ese nombre.');
+      throw error;
+    }
+
+    await refreshData();
+    return {
+      id: String(data.id),
+      name: data.name,
+      sortOrder: typeof data.sort_order === 'number' ? data.sort_order : 0,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  };
+
+  const deleteSponsorCategory: EquestrianContextType['deleteSponsorCategory'] = async id => {
+    requireAdmin();
+    const { error } = await supabase.from('sponsor_categories').delete().eq('id', id).select('id').single();
+    if (error) throw error;
+    await refreshData();
   };
 
   const saveDocument = async (entry: DocumentItem, file?: File | Blob, pages?: DocumentPageInput[]) => {
@@ -1089,6 +1340,8 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     isBackendConnected, refreshData, activeViewerDoc, setActiveViewerDoc, viewingDocumentId,
     setViewingDocumentId, addEvent, updateEvent, deleteEvent, toggleEventStatus, uploadEventImage,
     addDocument, updateDocument, deleteDocument, reorderDocument,
+    sponsors, sponsorsAvailable, sponsorsError, sponsorCategories, sponsorCategoriesAvailable, sponsorCategoriesError,
+    saveSponsor, deleteSponsor, toggleSponsorActive, uploadSponsorImage, saveSponsorCategory, deleteSponsorCategory,
     getDocumentsForEvent: id => namedDocuments.filter(doc => doc.eventId === id).sort((first, second) => first.order - second.order),
     getEventById: id => events.find(event => event.id === id),
     getDocumentById: id => namedDocuments.find(doc => doc.id === id),

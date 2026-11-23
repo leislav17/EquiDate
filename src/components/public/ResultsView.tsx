@@ -5,6 +5,7 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import { dressageFinalKey, publishedResults, resultPdf, resultColumnGroups, type ResultEntry, type ResultColumn, type ResultDetails } from '../../utils/results';
 import { resultDisplayColumns, resultDisplayValue } from '../../utils/resultDisplay';
 import { DressageResultRows } from './DressageResultRows';
+import { SponsorSection } from './SponsorSection';
 
 export function ResultDetailsPanel({ details = {} }: { details?: ResultDetails }) {
   if (!details.definition && !details.height && !details.allowedTime && !details.optimalTime && !details.rounds?.length) return null;
@@ -115,5 +116,10 @@ export function ResultsView({ classId }: { classId: string }) {
       {!result.entries.length && <p className="py-8 text-neutral-500">Resultados publicados sin participantes.</p>}
       {!!result.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}
     </>}
+    <SponsorSection
+      slot="listings_footer"
+      eventId={entry?.eventId}
+      hideGlobalSponsors={events.find(e => e.id === entry?.eventId)?.hideGlobalSponsors}
+    />
   </div></section>;
 }

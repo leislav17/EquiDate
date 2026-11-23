@@ -3,6 +3,7 @@ import { ArrowLeft, Bell, Download, Search } from 'lucide-react';
 import { useCanonicalRiderNames } from '../../hooks/useCanonicalRiderNames';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { publishedStartList, startPdf, StartEntry } from '../../utils/startLists';
+import { SponsorSection } from './SponsorSection';
 
 const startGrid = (showTime: boolean) => showTime
   ? 'grid-cols-[4rem_minmax(0,1fr)] @min-[36rem]:grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.6fr)]'
@@ -58,6 +59,13 @@ export function StartListView({ classId, onBack, embedded = false, desktopMetada
         {!!list.entries.length && !rows.length && <p className="py-8 text-neutral-500">No hay coincidencias.</p>}
       </>}
       </div>
+      {!embedded && (
+        <SponsorSection
+          slot="listings_footer"
+          eventId={entry?.eventId}
+          hideGlobalSponsors={events.find(e => e.id === entry?.eventId)?.hideGlobalSponsors}
+        />
+      )}
     </div>
   </section>;
 }

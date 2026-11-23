@@ -13,6 +13,7 @@ import { ResultsView } from './components/public/ResultsView';
 import { LiveResultsView } from './components/public/LiveResultsView';
 import { UsefulInfo } from './components/public/UsefulInfo';
 import { RiderSearch } from './components/public/RiderSearch';
+import { SponsorsPage } from './components/public/SponsorsPage';
 import { useNavigationScroll } from './hooks/useNavigationSession';
 import { trackPage } from './lib/analytics';
 import { disciplineLabels, listDiscipline } from './utils/disciplines';
@@ -47,6 +48,7 @@ const AppContent: React.FC = () => {
   const usefulAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/informacion-util';
   const riderSearch = routeLocation.pathname.replace(/\/+$/, '') === '/buscar/jinetes';
   const riderAdmin = routeLocation.pathname.replace(/\/+$/, '') === '/admin/jinetes';
+  const sponsorsPage = routeLocation.pathname.replace(/\/+$/, '') === '/sponsors';
   const transmissionId = hash.startsWith('#transmission/') ? hash.slice(14) : null;
   const startListId = hash.startsWith('#start-list/') ? hash.slice(12) : null;
   const resultsId = hash.startsWith('#results/') ? hash.slice(9) : null;
@@ -67,13 +69,13 @@ const AppContent: React.FC = () => {
     const event = events.find(event => event.id === (entry?.eventId || doc?.eventId || day?.eventId || selectedEventId));
     if (event?.slug && (routeLocation.pathname !== eventPath(event) + resourceSuffix(hash) ||
       routeLocation.hash || new URLSearchParams(routeLocation.search).has('event'))) return;
-    const screen = usefulInfo ? 'Información útil' : riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
+    const screen = usefulInfo ? 'Información útil' : sponsorsPage ? 'Sponsors EquiDate' : riderSearch ? 'Buscar jinetes' : viewingDocumentId ? doc?.name || 'Documento no encontrado'
       : liveResultsId ? 'Resultados en vivo' : resultsId ? 'Resultados' : startListId ? 'Orden de ingreso'
       : transmissionId ? 'Transmisión' : routeNotFound ? 'Concurso no encontrado' : discipline && discipline !== 'jumping' && !event ? disciplineLabels[discipline] : 'Concursos';
     const title = event ? `${screen === 'Concursos' ? '' : screen + ' · '}${event.name} · EquiDate` : `${screen} · EquiDate`;
     document.title = title;
     trackPage(window.location.href);
-  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, liveResultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, discipline]);
+  }, [routeLocation, isLoading, isAuthLoading, dataError, activeView, events, documents, classes, days, viewingDocumentId, startListId, resultsId, liveResultsId, transmissionId, selectedEventId, routeNotFound, hash, riderSearch, usefulInfo, sponsorsPage, discipline]);
 
   useEffect(() => {
     const ogTitleMeta = document.querySelector('meta[property="og:title"]');
@@ -98,7 +100,7 @@ const AppContent: React.FC = () => {
       {/* Main Content Router */}
       <main className="flex-1 w-full min-w-0">
         {(dataError || refreshError) && <div className="equidate-container pt-4"><div role="alert" className="p-4 bg-red-50 rounded-xl text-sm text-red-800">{dataError || refreshError}<button onClick={() => void refreshData()} className="ml-3 underline min-h-11">Reintentar</button></div></div>}
-        {usefulInfo ? <UsefulInfo /> : riderSearch ? <RiderSearch /> : liveResultsId ? (
+        {usefulInfo ? <UsefulInfo /> : sponsorsPage ? <SponsorsPage /> : riderSearch ? <RiderSearch /> : liveResultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p> : dataError ? null : <LiveResultsView key={liveResultsId} classId={liveResultsId} />
         ) : resultsId ? (
           isLoading ? <p role="status" className="p-8 text-center">Cargando resultados…</p>

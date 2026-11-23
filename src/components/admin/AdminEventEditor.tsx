@@ -7,6 +7,7 @@ import { ScheduleSection } from './sections/ScheduleSection';
 import { DocumentWorkspace } from './DocumentWorkspace';
 import { TransmissionSection } from './sections/TransmissionSection';
 import { ImportantInfoSection } from './sections/ImportantInfoSection';
+import { EventSponsorsSection } from './sections/EventSponsorsSection';
 import {
   ArrowLeft,
   ExternalLink,
@@ -15,7 +16,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info';
+export type AdminTab = 'general' | 'schedule' | 'documents' | 'transmission' | 'info' | 'sponsors';
 
 interface AdminEventEditorProps {
   eventId: string | 'new';
@@ -47,7 +48,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
       if (eventId === 'new') return 'general';
       const legacy = params.get('tab');
       const tabParam = (legacy === 'start-lists' || legacy === 'results' ? 'documents' : legacy) as AdminTab | null;
-      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info'].includes(tabParam)) {
+      if (tabParam && ['general', 'schedule', 'documents', 'transmission', 'info', 'sponsors'].includes(tabParam)) {
         return tabParam;
       }
     }
@@ -149,6 +150,7 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
     { id: 'schedule', label: 'Jornadas y pruebas' },
     { id: 'documents', label: 'Documentos' },
     { id: 'transmission', label: 'Transmisión' },
+    { id: 'sponsors', label: 'Sponsors' },
   ];
 
   return (
@@ -267,6 +269,10 @@ export const AdminEventEditor: React.FC<AdminEventEditorProps> = ({
 
           {activeTab === 'info' && event && (
             <ImportantInfoSection event={event} onDirtyChange={setIsDirty} />
+          )}
+
+          {activeTab === 'sponsors' && event && (
+            <EventSponsorsSection event={event} onDirtyChange={setIsDirty} />
           )}
 
           </div>

@@ -10,6 +10,7 @@ import { useRiderAssociations } from '../../hooks/useRiderAssociations';
 import { sessionDataScope } from '../../utils/navigationSession';
 import { RiderHistory } from '../admin/RiderHistory';
 import { ChevronDown } from 'lucide-react';
+import { SponsorSection } from './SponsorSection';
 
 export function RiderSearch({ admin = false }: { admin?: boolean }) {
   const data = useEquestrian();
@@ -115,5 +116,6 @@ export function RiderSearch({ admin = false }: { admin?: boolean }) {
       </section>}
     </>}
     {admin && data.isAdmin && <RiderHistory revision={reload} onChange={() => { setError(''); setReload(n => n + 1); }} />}
+    {!admin && <SponsorSection slot="listings_footer" />}
   </section>;
 }

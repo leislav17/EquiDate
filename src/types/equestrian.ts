@@ -29,6 +29,39 @@ export interface EquestrianEvent {
   endDate: string;    // YYYY-MM-DD (Database column end_date)
   status: EventStatus;
   importantInfo?: string; // Database column important_info
+  hideGlobalSponsors?: boolean; // Database column hide_global_sponsors
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SponsorScope = 'global' | 'event';
+export type SponsorPlacement = 'home' | 'listings_footer' | 'all' | 'event_detail';
+export type SponsorVariant = 'logo_card' | 'banner';
+
+export interface SponsorCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SponsorItem {
+  id: string;
+  name: string;
+  subtitle?: string;
+  imageUrl: string;
+  mobileImageUrl?: string;
+  targetUrl?: string;
+  categoryId?: string | null;
+  scope: SponsorScope;
+  eventId: string | null;
+  placement: SponsorPlacement;
+  variant: SponsorVariant;
+  sortOrder: number;
+  active: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

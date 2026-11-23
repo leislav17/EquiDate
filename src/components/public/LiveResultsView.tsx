@@ -6,9 +6,10 @@ import { useEquestrian } from '../../context/EquestrianContext';
 import type { StartEntry } from '../../utils/startLists';
 import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
 import { combinedLiveKeys, orderLiveEntries } from '../../utils/liveOrder';
+import { SponsorSection } from './SponsorSection';
 type Mark = { position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null; start_version_id:string };
 export const LiveResultsView: React.FC<{classId:string;embedded?:boolean;onBack?:()=>void}> = ({classId,embedded=false,onBack}) => {
-  const {classes,setSelectedEventId}=useEquestrian();
+  const {classes,events,setSelectedEventId}=useEquestrian();
   const entry=classes.find(c=>c.id===classId);
   const [snapshot,setSnapshot]=useState<{classId:string; id:string|null; entries:StartEntry[]}|null>(null);
   const list=snapshot?.classId===classId?snapshot:null;
@@ -58,5 +59,5 @@ export const LiveResultsView: React.FC<{classId:string;embedded?:boolean;onBack?
     const secondShown=!isDouble || (pos!=null && !!list?.id && roundQualifiers.includes(`p:${list.id}:${pos}`)) || (!!manualId && roundQualifiers.includes(`m:${manualId}`));
     const current=Boolean((manualId && manualTracking?.current_manual_id===manualId) || (pos!=null && tracking?.start_version_id===list?.id && tracking?.current_position===pos));
     return <tr key={key} className={current?'bg-rose-200':''}><td className="px-2 py-5 align-top text-sm sm:text-base leading-snug"><span className="block font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>{current && <span className="sr-only"> · En pista</span>}<span className="block mt-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span><span className="block mt-1 text-xs sm:text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.category}</span></td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{mark?.obstacle_faults??''}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{mark?.time_seconds!=null?Number(mark.time_seconds).toFixed(2):''}</td>{twoPhases&&<><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown?mark?.phase2_faults??'':''}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown&&mark?.phase2_seconds!=null?Number(mark.phase2_seconds).toFixed(2):''}</td></>}</tr>;
-  })}</tbody></table></div>}</div></div></section>;
+  })}</tbody></table></div>}</div>{!embedded && <SponsorSection slot="listings_footer" eventId={entry?.eventId} hideGlobalSponsors={events.find(e=>e.id===entry?.eventId)?.hideGlobalSponsors} />}</div></section>;
 };

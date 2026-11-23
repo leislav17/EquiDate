@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { disciplineLabels, eventDiscipline } from '../../utils/disciplines';
 import { EquestrianEvent, EventDiscipline } from '../../types/equestrian';
+import { SponsorSection } from './SponsorSection';
 
 export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ discipline }) => {
   const {
@@ -895,6 +896,8 @@ export const CompetitionList: React.FC<{ discipline: EventDiscipline }> = ({ dis
             </div>
           </div>
         )}
+
+        <SponsorSection slot="home_footer" />
       </div>
     </div>
   );

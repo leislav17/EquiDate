@@ -17,7 +17,7 @@ export function eventPath(event: Pick<RoutableEvent, 'id' | 'slug'>): string {
 
 export function eventReference(location: RouteLocation): string | null {
   if (isAdminRoute(location)) return null;
-  if (['/buscar/jinetes', '/informacion-util'].includes(location.pathname.replace(/\/+$/, ''))) return null;
+  if (['/buscar/jinetes', '/informacion-util', '/sponsors'].includes(location.pathname.replace(/\/+$/, ''))) return null;
   // Root retains support for older ?event= and #event/ links.
   if (listDiscipline(location.pathname) && location.pathname.replace(/\/+$/, '')) return null;
   let path: string;

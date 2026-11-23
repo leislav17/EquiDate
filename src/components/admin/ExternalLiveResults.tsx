@@ -1,3 +1,5 @@
+import { LiveTimeLimitsForm } from './LiveTimeLimitsForm';
+import { liveClassHeight } from '../../utils/liveTimeLimits';
 import {ManualLiveRow} from './ManualLiveRow';
 import {ManualEntryForm, type LiveEntryEdit} from './ManualEntryForm';
 import {type ManualEntry} from '../../utils/liveMatches';
@@ -157,6 +159,11 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
       {!classes.length && <p className="text-sm text-neutral-600">No hay pruebas con orden de ingreso publicado.</p>}
       {chosen && !chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs"><button type="button" disabled={starting} onClick={()=>void startLive()} className="inline-flex items-center gap-2 bg-[#A61E4D] text-white px-4 min-h-11 rounded-lg font-bold disabled:opacity-50"><Play size={18}/>{starting?'Iniciando…':'Iniciar carga de resultados en vivo'}</button></div>}
       {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs min-w-0">
+        <LiveTimeLimitsForm key={chosen.id} eventId={eventId} classId={chosen.id}
+          height={liveClassHeight(chosen.name, chosen.description)}
+          categories={[...chosen.entries, ...(chosen.manual ?? [])].map(row => row.category)}
+          firstLabel={jumpOff ? 'Recorrido inicial' : isDouble ? 'Recorrido 1' : twoPhases ? 'Fase 1' : 'Prueba'}
+          secondLabel={jumpOff ? 'Desempate' : isDouble ? 'Recorrido 2' : twoPhases ? 'Fase 2' : undefined} />
         <div className="flex justify-end mb-4"><button type="button" className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-[#A61E4D] text-white text-sm font-bold hover:bg-[#85163c]" onClick={()=>setEditing(editing==='new'?null:'new')}><Plus size={18} aria-hidden="true"/>Agregar binomio</button></div>
         {editing&&<ManualEntryForm
           key={editing==='new'?'new':'id' in editing?editing.id:editing.position}

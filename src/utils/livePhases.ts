@@ -1,3 +1,15 @@
+import { hasSecondPart, type ClassCatalog } from './competitionCatalog.ts';
+
+export function liveParts(entry: {
+  catalog?: ClassCatalog | null; liveFormat?: string | null; name?: string; description?: string;
+}) {
+  const behavior = entry.catalog?.definition.behavior;
+  const jumpOff = behavior ? behavior === '1D' : isJumpOff(entry.liveFormat, entry.name, entry.description);
+  const doubleRound = behavior ? behavior === 'DR' : isDoubleRound(entry.liveFormat, entry.name, entry.description);
+  const qualifiedSecond = jumpOff || doubleRound;
+  return { jumpOff, qualifiedSecond, twoPhases: behavior ? hasSecondPart(behavior) : qualifiedSecond || hasTwoPhases(entry.description) };
+}
+
 /** The schedule uses 2FE for two special phases. */
 export function hasTwoPhases(description?: string): boolean {
   const text = (description || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

@@ -431,7 +431,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setClasses((classResponse.data || []).map(entry => ({
           id: entry.id, dayId: entry.day_id, eventId: entry.event_id, arenaId: entry.arena_id || '',
           date: entry.event_date, time: entry.start_time?.slice(0, 5) || '',
-          number: entry.number, name: entry.name, description: entry.description || '', liveFormat: entry.live_format === 'double_round' ? 'double_round' : null, order: entry.sort_order,
+          number: entry.number, name: entry.name, description: entry.description || '', catalog: entry.catalog ?? null, liveFormat: entry.live_format === 'double_round' ? 'double_round' : null, order: entry.sort_order,
           isApproximate: Boolean(entry.is_approximate),
           isContinuous: Boolean(entry.is_continuous),
           participantCount: typeof entry.participant_count === 'number' ? entry.participant_count : null,
@@ -1122,6 +1122,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       name: entry.name.trim(),
       description: entry.description.trim(),
       live_format: entry.liveFormat ?? null,
+      ...(entry.catalogSelection ? { catalog: entry.catalogSelection } : {}),
       sort_order: entry.order,
     };
     const payloadWithFlags = {
@@ -1160,7 +1161,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Validate all items before inserting anything
     for (const entry of entries) {
       if (!entry.number.trim()) throw new Error('Ingresá el número de la prueba.');
-      if (!entry.name.trim()) throw new Error('Ingresá el nombre de la prueba.');
+      if (!entry.catalogSelection && !entry.name.trim()) throw new Error('Ingresá el nombre de la prueba.');
       const arena = arenas.find(item => item.id === entry.arenaId && item.eventId === entry.eventId);
       if (!arena) throw new Error('Seleccioná una pista válida para cada prueba.');
     }
@@ -1192,6 +1193,7 @@ export const EquestrianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         name: entry.name.trim(),
         description: entry.description.trim(),
         live_format: entry.liveFormat ?? null,
+        ...(entry.catalogSelection ? { catalog: entry.catalogSelection } : {}),
         sort_order: entry.order,
         is_approximate: Boolean(entry.isApproximate),
         is_continuous: Boolean(entry.isContinuous),

@@ -6,12 +6,13 @@ import {type ManualEntry} from '../../utils/liveMatches';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GripVertical, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
+import { liveParts } from '../../utils/livePhases';
+import { liveCategoryName, type ClassCatalog } from '../../utils/competitionCatalog';
 import { combinedLiveKeys, moveLivePosition, orderLiveEntries } from '../../utils/liveOrder';
 
 type Participant = {position:number; rider:string; horse:string; category?:string; club?:string};
 type Mark = {position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null};
-type LiveClass = {started:boolean;publicVisible:boolean;liveFormat:'double_round'|null;roundQualifiers:string[];manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
+type LiveClass = {catalog?: ClassCatalog | null; started:boolean;publicVisible:boolean;liveFormat:'double_round'|null;roundQualifiers:string[];manual?:ManualEntry[];manualTracking:{current_manual_id:string|null;no_shows:string[]}|null;combined:{entries:string[];revision:number}|null;id:string; number:string; name:string; description:string; event_date:string; versionId:string; entries:Participant[]; marks:Mark[]; tracking:{current_position:number|null; no_shows:number[]; live_order:number[]|null}|null};
 export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; onBack:()=>void}> = ({eventId,eventName,onBack}) => {
   const [classes,setClasses]=useState<LiveClass[]>([]);
   const [classId,setClassId]=useState('');
@@ -81,8 +82,18 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     if(!chosen || starting)return;
     setStarting(true);setError('');setMessage('');
     try {
-      const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_start',eventId,classId:chosen.id}});
-      if(error || !data?.success) throw new Error('start failed');
+      let confirmedDifferences: string[] | undefined;
+      while (true) {
+        const { data, error } = await supabase.functions.invoke('external-assignments', {
+          body: { action: 'live_start', eventId, classId: chosen.id, confirmedDifferences },
+        });
+        if (error) throw error;
+        if (data?.success) break;
+        if (!Array.isArray(data?.differences) || !data.differences.length) throw new Error('start failed');
+        const categories = data.differences.join(', ');
+        if (!window.confirm(`El orden de ingreso tiene categorías que no están habilitadas: ${categories}. ¿Iniciar el vivo con estas categorías?`)) return;
+        confirmedDifferences = data.differences;
+      }
       await load();
     } catch {setError('No se pudo iniciar la carga. Verificá tu acceso e intentá nuevamente.');}
     finally {setStarting(false);}
@@ -109,7 +120,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     const manual=key.startsWith('m:');
     const {data,error}=await supabase.functions.invoke('double-round',{body:{action:'set',eventId,classId:chosen.id,startVersionId:manual?null:chosen.versionId,manualId:manual?key.slice(2):null,position:manual?null:Number(key.slice(2)),qualified}});
     if(error||!data?.success)setError('No se pudo actualizar la selección. Verificá tu acceso e intentá nuevamente.');
-    else {await load();setMessage(qualified?(isJumpOff(chosen.liveFormat,chosen.name,chosen.description)?'Binomio seleccionado para el desempate.':'Binomio seleccionado para el segundo recorrido.'):(isJumpOff(chosen.liveFormat,chosen.name,chosen.description)?'Binomio quitado del desempate. Sus marcas se conservan.':'Binomio quitado del segundo recorrido. Sus marcas se conservan.'));}
+    else {await load();setMessage(qualified?(liveParts(chosen).jumpOff?'Binomio seleccionado para el desempate.':'Binomio seleccionado para el segundo recorrido.'):(liveParts(chosen).jumpOff?'Binomio quitado del desempate. Sus marcas se conservan.':'Binomio quitado del segundo recorrido. Sus marcas se conservan.'));}
     setBusy(null);
   };
   const move=async(position:string,target:string)=>{
@@ -131,9 +142,9 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
     const secondsText=values.seconds.trim().replace(',','.');
     if (!/^\d+$/.test(values.faults) || Number(values.faults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondsText) || Number(secondsText)>9999999) {setError('Ingresá faltas enteras y un tiempo válido con hasta dos decimales.');return;}
     const secondSeconds=values.secondSeconds.trim().replace(',','.');
-    const isDouble=isDoubleRound(chosen.liveFormat,chosen.name,chosen.description)||isJumpOff(chosen.liveFormat,chosen.name,chosen.description);
+    const { qualifiedSecond: isDouble, twoPhases } = liveParts(chosen);
     const qualified=chosen.roundQualifiers.includes(`p:${chosen.versionId}:${row.position}`);
-    const hasSecond=(isDouble?qualified:hasTwoPhases(chosen.description)) && (values.secondFaults.trim() !== '' || secondSeconds !== '');
+    const hasSecond=(isDouble?qualified:twoPhases) && (values.secondFaults.trim() !== '' || secondSeconds !== '');
     if (hasSecond && (!/^\d+$/.test(values.secondFaults) || Number(values.secondFaults)>999 || !/^\d+(?:\.\d{1,2})?$/.test(secondSeconds) || Number(secondSeconds)>9999999)) {setError('Completá faltas y tiempo válidos para la segunda fase, o dejá ambos campos vacíos.');return;}
     setError('');setMessage('');setBusy(row.position);
     const {data,error}=await supabase.functions.invoke('external-assignments',{body:{action:'live_save',eventId,classId:chosen.id,startVersionId:chosen.versionId,position:row.position,faults:Number(values.faults),seconds:Number(secondsText),secondFaults:hasSecond?Number(values.secondFaults):isDouble&&!qualified?mark?.phase2_faults??null:null,secondSeconds:hasSecond?Number(secondSeconds):isDouble&&!qualified?mark?.phase2_seconds??null:null}});
@@ -146,9 +157,7 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
   const dragButton=(key:string,rider:string,index:number)=><button type="button" disabled={busy!==null} aria-label={`Arrastrar a ${rider}; también podés usar las flechas arriba y abajo`} title="Arrastrar para cambiar el orden" className="min-w-11 min-h-11 inline-flex items-center justify-center text-[#123E59] cursor-grab active:cursor-grabbing touch-none select-none disabled:opacity-50"
     onPointerDown={e=>{if(busy!==null)return; tableRegion.current?.setPointerCapture(e.pointerId); drag.current={position:key,target:key,startX:e.clientX,startY:e.clientY,moved:false};}}
     onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const target=ordered[index+(e.key==='ArrowUp'?-1:1)];if(target)void move(key,target);}}}><GripVertical aria-hidden="true" size={20}/></button>;
-  const jumpOff=!!chosen && isJumpOff(chosen.liveFormat,chosen.name,chosen.description);
-  const isDouble=!!chosen && (isDoubleRound(chosen.liveFormat,chosen.name,chosen.description)||jumpOff);
-  const twoPhases=!!chosen && (isDouble||hasTwoPhases(chosen.description));
+  const { jumpOff, qualifiedSecond: isDouble, twoPhases } = liveParts(chosen ?? {});
   const qualifierBox=(key:string,checked:boolean,rider:string)=><label className="flex items-center gap-2 mt-2 text-xs font-semibold text-[#123E59]"><input type="checkbox" checked={checked} disabled={busy!==null} onChange={e=>void setQualified(key,e.target.checked)} aria-label={`${jumpOff?'Pasa al desempate':'Pasa al segundo recorrido'}: ${rider}`} className="h-4 w-4 accent-[#A61E4D]"/>{jumpOff?'Pasa al desempate':'Pasa al segundo recorrido'}</label>;
   return <section className="equidate-container py-6 sm:py-8 space-y-5">
     <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-[#123E59] min-h-11"><ArrowLeft size={18}/>Volver al concurso</button>
@@ -160,8 +169,9 @@ export const ExternalLiveResults: React.FC<{eventId:string; eventName:string; on
       {chosen && !chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs"><button type="button" disabled={starting} onClick={()=>void startLive()} className="inline-flex items-center gap-2 bg-[#A61E4D] text-white px-4 min-h-11 rounded-lg font-bold disabled:opacity-50"><Play size={18}/>{starting?'Iniciando…':'Iniciar carga de resultados en vivo'}</button></div>}
       {chosen && chosen.started && <div className="bg-white border border-neutral-200/80 rounded-2xl p-4 shadow-xs min-w-0">
         <LiveTimeLimitsForm key={chosen.id} eventId={eventId} classId={chosen.id}
-          height={liveClassHeight(chosen.name, chosen.description)}
-          categories={[...chosen.entries, ...(chosen.manual ?? [])].map(row => row.category)}
+          height={chosen.catalog?.heightCm ?? liveClassHeight(chosen.name, chosen.description)}
+          secondHeight={chosen.catalog?.secondHeightCm ?? undefined}
+          categories={[...chosen.entries, ...(chosen.manual ?? [])].map(row => liveCategoryName(chosen.catalog, row.category))}
           firstLabel={jumpOff ? 'Recorrido inicial' : isDouble ? 'Recorrido 1' : twoPhases ? 'Fase 1' : 'Prueba'}
           secondLabel={jumpOff ? 'Desempate' : isDouble ? 'Recorrido 2' : twoPhases ? 'Fase 2' : undefined} />
         <div className="flex justify-end mb-4"><button type="button" className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg bg-[#A61E4D] text-white text-sm font-bold hover:bg-[#85163c]" onClick={()=>setEditing(editing==='new'?null:'new')}><Plus size={18} aria-hidden="true"/>Agregar binomio</button></div>

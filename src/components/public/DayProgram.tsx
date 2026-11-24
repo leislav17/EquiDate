@@ -1,3 +1,4 @@
+import { entryFeeLabel } from '../../utils/competitionCatalog';
 import { Bell, Award } from 'lucide-react';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { sortClasses, sortArenas, formatClassSchedule } from '../../utils/schedule';
@@ -79,6 +80,10 @@ export function DayProgram({ eventId, date, arenaId, onOpenStartList, onOpenList
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase font-bold tracking-wider text-[#A61E4D] break-words">{identLabel}</p>
               <h3 className="font-display font-bold text-lg text-[#123E59] break-words">{entry.name}</h3>
+              {entry.catalog && <div className="mt-1 space-y-0.5 text-sm text-neutral-600">
+                <p>Categorías: {entry.catalog.categories.map(category => category.name).join(', ')}</p>
+                {entry.catalog.entryFee != null && <p>Costo de inscripción: {entryFeeLabel(entry.catalog.entryFee)}</p>}
+              </div>}
               {entry.description && <p className="text-sm text-neutral-500 mt-1 break-words">{entry.description}</p>}
             </div>
           </div>

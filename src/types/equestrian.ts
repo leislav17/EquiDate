@@ -106,6 +106,8 @@ export interface CompetitionDay {
 }
 
 export interface CompetitionClass {
+  catalog?: import('../utils/competitionCatalog').ClassCatalog | null;
+  catalogSelection?: import('../utils/competitionCatalog').CatalogSelection;
   arenaId: string;
   id: string;
   dayId: string;

@@ -4,6 +4,8 @@ import { EquestrianEvent, CompetitionClass } from '../../types/equestrian';
 import { useEquestrian } from '../../context/EquestrianContext';
 import { getDaysBetween, formatDayHeader } from '../../utils/dateUtils';
 import { DEFAULT_TIME_ZONE, sortClasses, sortArenas, formatClassSchedule } from '../../utils/schedule';
+import { CompetitionCatalogFields } from './CompetitionCatalogFields';
+import { catalogSelection, type CatalogSelection } from '../../utils/competitionCatalog';
 import { DayProgram } from '../public/DayProgram';
 
 const field = 'block w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mt-1 bg-white min-h-11';
@@ -505,6 +507,11 @@ export function ClassForm({
   const [commonApproximate, setCommonApproximate] = useState(entry?.isApproximate ?? false);
   const [commonContinuous, setCommonContinuous] = useState(entry?.isContinuous ?? false);
   const [name, setName] = useState(entry?.name || '');
+  const supportsCatalog = !event.discipline || event.discipline === 'jumping';
+  const [useCatalog, setUseCatalog] = useState(supportsCatalog && (mode === 'create' || !!entry?.catalog));
+  const [catalog, setCatalog] = useState<CatalogSelection>(() => entry?.catalog ? catalogSelection(entry.catalog) : {
+    definitionId: '', categoryIds: [], heightCm: 0, secondHeightCm: null, specialName: null, entryFee: null,
+  });
   const [description, setDescription] = useState(entry?.description || '');
   const [liveFormat,setLiveFormat]=useState<'double_round'|''>(entry?.liveFormat==='double_round'?'double_round':'');
   const [participantCount, setParticipantCount] = useState<string>(() => {
@@ -574,6 +581,7 @@ export function ClassForm({
 
   const handleSubmit = (form: React.FormEvent) => {
     form.preventDefault();
+    if (useCatalog && (!catalog.definitionId || !catalog.categoryIds.length || !catalog.heightCm)) return;
     const parsedCount = participantCount.trim() === '' ? null : Math.max(0, parseInt(participantCount, 10));
     const validCount = parsedCount === null || isNaN(parsedCount) ? null : parsedCount;
 
@@ -592,6 +600,7 @@ export function ClassForm({
         time: commonContinuous ? (commonTime || '') : commonTime,
         description,
         liveFormat:liveFormat || null,
+        catalogSelection: useCatalog ? catalog : undefined,
         order,
         isApproximate: commonContinuous ? false : commonApproximate,
         isContinuous: commonContinuous,
@@ -617,6 +626,7 @@ export function ClassForm({
         time: effContinuous ? (effTime || '') : effTime,
         description,
         liveFormat:liveFormat || null,
+        catalogSelection: useCatalog ? catalog : undefined,
         order,
         isApproximate: effApproximate,
         isContinuous: effContinuous,
@@ -660,12 +670,14 @@ export function ClassForm({
       </div>
 
       <fieldset disabled={busy} className="space-y-3">
-        <label className="block text-xs font-semibold text-neutral-700">Tipo de prueba para resultados en vivo
+        {supportsCatalog && entry && !useCatalog && <button type="button" className={button} onClick={() => setUseCatalog(true)}>Estandarizar esta prueba</button>}
+        {useCatalog && <CompetitionCatalogFields saved={mode === 'edit' ? entry?.catalog : null} value={catalog} onChange={setCatalog} />}
+        {!useCatalog && <label className="block text-xs font-semibold text-neutral-700">Tipo de prueba para resultados en vivo
           <select className={field} value={liveFormat} onChange={e=>setLiveFormat(e.target.value as 'double_round'|'')}>
             <option value="">Automático según nombre o descripción</option>
             <option value="double_round">Doble recorrido</option>
           </select>
-        </label>
+        </label>}
         {/* Date selection */}
         {isEditingExisting ? (
           <div>
@@ -855,7 +867,7 @@ export function ClassForm({
         </div>
 
         {/* Name */}
-        <label className="block text-xs font-semibold text-neutral-700">
+        {!useCatalog && <label className="block text-xs font-semibold text-neutral-700">
           Nombre de la prueba
           <input
             required
@@ -864,7 +876,7 @@ export function ClassForm({
             onChange={form => setName(form.target.value)}
             placeholder="CSN Libre 1.30 / 1 m"
           />
-        </label>
+        </label>}
 
         {/* Description */}
         <label className="block text-xs font-semibold text-neutral-700">
@@ -1016,7 +1028,7 @@ export function ClassForm({
         )}
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <button type="submit" className={button} disabled={busy || (mode === 'create' && !selectedDates.length)}>
+          <button type="submit" className={button} disabled={busy || (mode === 'create' && !selectedDates.length) || (useCatalog && !catalog.categoryIds.length)}>
             {submitButtonText()}
           </button>
           <button

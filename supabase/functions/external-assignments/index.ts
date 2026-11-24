@@ -48,8 +48,15 @@ Deno.serve(async (req: Request) => {
     }
     if (body.action === 'live_start') {
       if (typeof body.classId !== 'string') return reply({error:'Prueba inválida.'},400);
-      const {error} = await service.rpc('equidate_start_live_results', {actor:auth.user.id,target_event:body.eventId,target_class:body.classId});
-      return error ? reply({error:'No se pudo iniciar la carga. Verificá tu acceso.'},403) : reply({success:true});
+      const differences = body.confirmedDifferences;
+      if (differences != null && (!Array.isArray(differences) || differences.some((label: unknown) => typeof label !== 'string'))) {
+        return reply({error:'Confirmación inválida.'},400);
+      }
+      const {data, error} = await service.rpc('equidate_start_catalog_live', {
+        actor: auth.user.id, target_event: body.eventId, target_class: body.classId,
+        confirmed_differences: differences ?? null,
+      });
+      return error ? reply({error:'No se pudo iniciar la carga. Verificá tu acceso.'},403) : reply(data?.length ? {differences: data} : {success:true});
     }
     if (body.action === 'combined_reorder') {
       if (typeof body.classId !== 'string' || typeof body.startVersionId !== 'string' ||
@@ -133,7 +140,7 @@ Deno.serve(async (req: Request) => {
       });
       return error ? reply({ error: 'No se pudo agregar el binomio.' }, 400) : reply({ success: true });
     }
-    const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order').eq('event_id', body.eventId).order('event_date').order('sort_order');
+    const { data: classes, error: classesError } = await service.from('competition_classes').select('id,number,name,description,event_date,arena_id,sort_order,catalog').eq('event_id', body.eventId).order('event_date').order('sort_order');
     if (classesError) return reply({ error: 'No se pudieron consultar las pruebas.' }, 500);
     const ids = (classes || []).map((c: {id:string}) => c.id);
     if (!ids.length) return reply({ classes: [] });

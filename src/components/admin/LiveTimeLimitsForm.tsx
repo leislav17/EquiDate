@@ -8,12 +8,13 @@ type Props = {
   eventId: string;
   classId: string;
   height?: number;
+  secondHeight?: number;
   categories: (string | undefined)[];
   firstLabel: string;
   secondLabel?: string;
 };
 
-export function LiveTimeLimitsForm({ eventId, classId, height, categories, firstLabel, secondLabel }: Props) {
+export function LiveTimeLimitsForm({ eventId, classId, height, secondHeight, categories, firstLabel, secondLabel }: Props) {
   const [saved, setSaved] = useState<LiveTimeLimits | null>(null);
   const [draft, setDraft] = useState<LiveTimeLimits>({});
   const [error, setError] = useState('');
@@ -37,10 +38,6 @@ export function LiveTimeLimitsForm({ eventId, classId, height, categories, first
     return () => { active = false; };
   }, [eventId, classId, reload]);
 
-  const groups = new Set(categories.map(category => timeGroup(category, height)));
-  const hasSchool = groups.has('school');
-  const hasThird = groups.has('third');
-  const hasShared = (!hasSchool && !hasThird) || (height === 90 && groups.has('shared') && hasSchool && hasThird);
   const parts: [Part, string][] = [['1', firstLabel]];
   if (secondLabel) parts.push(['2', secondLabel]);
 
@@ -59,8 +56,9 @@ export function LiveTimeLimitsForm({ eventId, classId, height, categories, first
   const save = async () => {
     if (!saved || saving) return;
     const isCorrection = parts.some(([part]) => {
-      const before = resolvePartTimes(saved[part], height);
-      const after = resolvePartTimes(draft[part], height);
+      const partHeight = part === '2' ? secondHeight ?? height : height;
+      const before = resolvePartTimes(saved[part], partHeight);
+      const after = resolvePartTimes(draft[part], partHeight);
       return (['sharedAllowed', 'schoolAllowed', 'thirdAllowed'] as const)
         .some(field => before[field] != null && before[field] !== after[field]);
     });
@@ -100,7 +98,12 @@ export function LiveTimeLimitsForm({ eventId, classId, height, categories, first
         <form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); void save(); }}>
           {parts.map(([part, label]) => {
             const inputs = draft[part] ?? {};
-            const resolved = resolvePartTimes(inputs, height);
+            const partHeight = part === '2' ? secondHeight ?? height : height;
+            const groups = new Set(categories.map(category => timeGroup(category, partHeight)));
+            const hasSchool = groups.has('school');
+            const hasThird = groups.has('third');
+            const hasShared = (!hasSchool && !hasThird) || (groups.has('shared') && hasSchool && hasThird);
+            const resolved = resolvePartTimes(inputs, partHeight);
             const input = (field: TimeField, title: string) => (
               <label className="block text-sm" key={field}>
                 <span className="block font-medium">{title}</span>

@@ -6,6 +6,7 @@ import { AdminEventEditor } from './AdminEventEditor';
 import { navigate } from '../../utils/navigation';
 import { AdminCompetitionCard } from './AdminCompetitionCard';
 import { AdminUsers } from './AdminUsers';
+import { CompetitionCatalogManager } from './CompetitionCatalogManager';
 import { SponsorManager } from './SponsorManager';
 
 export const AdminDashboard: React.FC = () => {
@@ -16,6 +17,7 @@ export const AdminDashboard: React.FC = () => {
   const selectEvent = (id: string, replace = false) => navigate(`/admin/concursos?event=${encodeURIComponent(id)}`, replace);
   const currentPath = routeLocation.pathname.replace(/\/+$/, '');
   if (currentPath === '/admin/usuarios') return <AdminUsers />;
+  if (currentPath === '/admin/catalogos') return <CompetitionCatalogManager onBack={() => navigate('/admin')} />;
   if (currentPath === '/admin/sponsors') return <SponsorManager scope="global" onBack={() => navigate('/admin')} />;
   if (currentEventId) return <AdminEventEditor key={currentEventId} eventId={currentEventId}
     onBack={() => navigate('/admin/concursos')} onSelectEvent={id => selectEvent(id, true)} />;
@@ -27,6 +29,7 @@ export const AdminDashboard: React.FC = () => {
     { title: 'Gestionar concursos', url: '/admin/concursos', icon: CalendarDays },
     { title: 'Asociaciones de jinetes', url: '/admin/jinetes', icon: Users },
     { title: 'Gestionar información útil', url: '/admin/informacion-util', icon: Link },
+    { title: 'Catálogos de pruebas', url: '/admin/catalogos', icon: Award },
     { title: 'Gestionar sponsors', url: '/admin/sponsors', icon: Award },
   ];
   return <div className="equidate-container py-5 sm:py-6 space-y-6">

@@ -5,7 +5,8 @@ import { ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useEquestrian } from '../../context/EquestrianContext';
 import type { StartEntry } from '../../utils/startLists';
-import { hasTwoPhases, isDoubleRound, isJumpOff } from '../../utils/livePhases';
+import { liveParts } from '../../utils/livePhases';
+import { liveCategoryName } from '../../utils/competitionCatalog';
 import { combinedLiveKeys, orderLiveEntries } from '../../utils/liveOrder';
 import { SponsorSection } from './SponsorSection';
 type Mark = { position:number; obstacle_faults:number; time_seconds:number; phase2_faults:number|null; phase2_seconds:number|null; start_version_id:string };
@@ -47,26 +48,30 @@ export const LiveResultsView: React.FC<{classId:string;embedded?:boolean;onBack?
     const timer=window.setInterval(()=>void refreshLive(),15000);
     return()=>{active=false;window.clearInterval(timer);};
   },[classId,list?.classId,list?.id]);
-  const jumpOff=isJumpOff(entry?.liveFormat,entry?.name,entry?.description);
-  const isDouble=isDoubleRound(entry?.liveFormat,entry?.name,entry?.description)||jumpOff;
-  const twoPhases=isDouble||hasTwoPhases(entry?.description);
-  const height = liveClassHeight(entry?.name, entry?.description);
-  const groups = new Set([...(list?.entries ?? []), ...manual].filter(row => row.category?.trim()).map(row => timeGroup(row.category, height)));
-  const sharedGroup = groups.has('school') === groups.has('third') ? 'shared' : groups.has('school') ? 'school' : 'third';
-  const firstTimes = resolvePartTimes(timeLimits['1'], height);
-  const secondTimes = resolvePartTimes(timeLimits['2'], height);
+  const { jumpOff, qualifiedSecond: isDouble, twoPhases } = liveParts(entry ?? {});
+  const height = entry?.catalog?.heightCm ?? liveClassHeight(entry?.name, entry?.description);
+  const secondHeight = entry?.catalog?.secondHeightCm ?? height;
+  const recordedCategories = [...(list?.entries ?? []), ...manual].map(row => liveCategoryName(entry?.catalog, row.category));
+  const allowances = (part: '1' | '2', partHeight?: number) => {
+    const times = resolvePartTimes(timeLimits[part], partHeight);
+    const groups = new Set(recordedCategories.map(category => timeGroup(category, partHeight)));
+    if (times.sharedAllowed == null && groups.has('school') !== groups.has('third')) {
+      times.sharedAllowed = groups.has('school') ? times.schoolAllowed : times.thirdAllowed;
+    }
+    return (category?: string) => times[`${timeGroup(liveCategoryName(entry?.catalog, category), partHeight)}Allowed`];
+  };
+  const firstAllowed = allowances('1', height);
+  const secondAllowed = allowances('2', secondHeight);
   const rows=orderLiveEntries(list?.entries||[],tracking && list && tracking.start_version_id===list.id ? tracking.live_order : null).filter(row=>row.category?.trim()).map(row=>({row,mark:marks.find(m=>m.start_version_id===list?.id&&m.position===row.position)}));
   return <section className={embedded ? '@container bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-4 sm:p-6' : 'min-h-[calc(100vh-64px)] bg-[#f4f6f8] py-5 sm:py-6'}><div className={embedded ? '' : 'equidate-container'}><button onClick={()=>onBack?onBack():setSelectedEventId(entry?.eventId||null)} className="inline-flex items-center gap-2 min-h-11 text-sm font-semibold text-[#123E59]"><ArrowLeft size={18}/>{embedded?'Volver a las pruebas de la jornada':'Volver al concurso'}</button><div className={embedded ? 'mt-4' : 'mt-4 bg-white border border-neutral-200/80 rounded-2xl p-4 sm:p-6 shadow-xs'}><p className="text-xs font-bold uppercase tracking-wider text-[#A61E4D]">Prueba {entry?.number}</p><h1 className="font-display text-2xl font-bold text-[#123E59] break-words">{entry?.name || 'Resultados en vivo'}</h1><p className="mt-3 text-sm font-bold text-[#A61E4D]">Resultados provisorios · No oficiales</p><p className="text-sm text-neutral-600 mt-1">Orden del seguimiento en vivo; sin clasificación.</p>{isShared===null?<p className="py-6">Consultando resultados…</p>:!isShared?<p className="py-6 text-neutral-600">Los resultados en vivo no están disponibles para esta prueba.</p>:loading?<p className="py-6">Cargando marcas…</p>:error?<p role="alert" className="py-6 text-red-700">{error}</p>:<div className="mt-5 w-full min-w-0 overflow-x-auto"><table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm"><colgroup><col className={twoPhases?'w-[42%]':'w-[56%]'} /><col /><col />{twoPhases&&<><col /><col /></>}</colgroup><thead className="bg-[#123E59] text-white text-[9px] sm:text-xs uppercase font-semibold"><tr><th rowSpan={2} scope="col" className="px-2 py-3 rounded-l-lg break-words">Jinete / Caballo / Categoría</th><th colSpan={2} scope="colgroup" className={twoPhases?'px-0.5 pt-3 text-center':'px-0.5 pt-3 text-center rounded-tr-lg'}>{jumpOff?'Recorrido':isDouble?'Recorrido 1':twoPhases?'Fase 1':'Resultado'}</th>{twoPhases&&<th colSpan={2} scope="colgroup" className="px-0.5 pt-3 text-center rounded-tr-lg">{jumpOff?'Desempate':isDouble?'Recorrido 2':'Fase 2'}</th>}</tr><tr><th scope="col" className="px-0.5 pb-3 text-center">Faltas</th><th scope="col" className={twoPhases?'px-0.5 pb-3 text-center':'px-0.5 pb-3 text-center rounded-br-lg'}>Tiempo</th>{twoPhases&&<><th scope="col" className="px-0.5 pb-3 text-center">Faltas</th><th scope="col" className="px-0.5 pb-3 text-center rounded-br-lg">Tiempo</th></>}</tr></thead><tbody className="divide-y divide-neutral-200">{combinedLiveKeys(rows.map(x=>x.row.position),manual.map(x=>x.id),combined).map(key=>{
     const published=key.startsWith('p:')?rows.find(x=>'p:'+x.row.position===key):undefined;
     const added=key.startsWith('m:')?manual.find(x=>'m:'+x.id===key):undefined;
     const row=published?.row??added, mark=published?.mark??added;
     if(!row || !row.category?.trim())return null;
-    const group = timeGroup(row.category, height);
-    const allowedField = `${group === 'shared' ? sharedGroup : group}Allowed` as const;
     const pos=published?.row.position;
     const manualId=added?.id;
     const secondShown=!isDouble || (pos!=null && !!list?.id && roundQualifiers.includes(`p:${list.id}:${pos}`)) || (!!manualId && roundQualifiers.includes(`m:${manualId}`));
     const current=Boolean((manualId && manualTracking?.current_manual_id===manualId) || (pos!=null && tracking?.start_version_id===list?.id && tracking?.current_position===pos));
-    return <tr key={key} className={current?'bg-rose-200':''}><td className="px-2 py-5 align-top text-sm sm:text-base leading-snug"><span className="block font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>{current && <span className="sr-only"> · En pista</span>}<span className="block mt-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span><span className="block mt-1 text-xs sm:text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.category}</span></td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{totalLiveFaults(mark?.obstacle_faults, mark?.time_seconds, firstTimes[allowedField])}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{mark?.time_seconds!=null?Number(mark.time_seconds).toFixed(2):''}</td>{twoPhases&&<><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown ? totalLiveFaults(mark?.phase2_faults, mark?.phase2_seconds, secondTimes[allowedField]) : ''}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown&&mark?.phase2_seconds!=null?Number(mark.phase2_seconds).toFixed(2):''}</td></>}</tr>;
+    return <tr key={key} className={current?'bg-rose-200':''}><td className="px-2 py-5 align-top text-sm sm:text-base leading-snug"><span className="block font-bold text-[#123E59] break-words [overflow-wrap:anywhere]">{row.rider}</span>{current && <span className="sr-only"> · En pista</span>}<span className="block mt-1 text-neutral-700 break-words [overflow-wrap:anywhere]">{row.horse}</span><span className="block mt-1 text-xs sm:text-sm text-neutral-500 break-words [overflow-wrap:anywhere]">{row.category}</span></td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{totalLiveFaults(mark?.obstacle_faults, mark?.time_seconds, firstAllowed(row.category))}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{mark?.time_seconds!=null?Number(mark.time_seconds).toFixed(2):''}</td>{twoPhases&&<><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown ? totalLiveFaults(mark?.phase2_faults, mark?.phase2_seconds, secondAllowed(row.category)) : ''}</td><td className="px-0.5 py-5 align-top text-center tabular-nums text-xs sm:text-sm break-all">{secondShown&&mark?.phase2_seconds!=null?Number(mark.phase2_seconds).toFixed(2):''}</td></>}</tr>;
   })}</tbody></table></div>}</div>{!embedded && <SponsorSection slot="listings_footer" eventId={entry?.eventId} hideGlobalSponsors={events.find(e=>e.id===entry?.eventId)?.hideGlobalSponsors} />}</div></section>;
 };
